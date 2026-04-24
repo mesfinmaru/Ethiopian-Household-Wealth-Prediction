@@ -1,1 +1,1 @@
-# Ethio-Household-Wealth-Prediction
+# Ethiopian-Household-Wealth-Prediction
