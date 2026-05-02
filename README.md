@@ -13,7 +13,7 @@ Below is the current state of the project components:
 * **Data Cleaning & Preprocessing:** `[IN PROGRESS]`
 * **Feature Engineering:** `[IN PROGRESS]`
 * **Model Training:** `[IN PROGRESS]`
-* **Hyperparameter Tuning:** `[UNKOWN]`
+* **Hyperparameter Tuning:** `[UNKnOWN]`
 * **Final Prediction:** `[PLANNED]`
 
 ---
