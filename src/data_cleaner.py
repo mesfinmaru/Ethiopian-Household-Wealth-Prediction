@@ -1,123 +1,108 @@
-"""
-Data Cleaning Module
-====================
-Missing value imputation, outlier treatment, duplicate removal.
-"""
+"""Data cleaning utilities for ESS/LSMS household datasets.
 
-import pandas as pd
+Includes profiling, missing-value handling, outlier treatment, and de-duplication.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, Iterable, Optional
+
 import numpy as np
-from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
-from scipy import stats
-import warnings
-warnings.filterwarnings('ignore')
+import pandas as pd
+from sklearn.impute import KNNImputer, SimpleImputer
+
+
+@dataclass
+class CleaningSummary:
+    dropped_sparse_cols: list[str] = field(default_factory=list)
+    imputation_strategy: str = "median_mode"
+    duplicate_rows_removed: int = 0
+    outlier_caps: Dict[str, tuple[float, float]] = field(default_factory=dict)
 
 
 class DataCleaner:
-    """Data cleaning for household survey data."""
+    """Production-friendly cleaner with explicit missing-value controls."""
 
-    def __init__(self):
-        self.imputer = None
-        self.cleaning_log = []
+    def __init__(self) -> None:
+        self.numeric_imputer = None
+        self.categorical_imputer = None
+        self.summary = CleaningSummary()
 
-    def detect_missing(self, df):
-        """Missing values report"""
-        m = pd.DataFrame({
-            'column': df.columns,
-            'missing': df.isnull().sum().values,
-            'pct': (df.isnull().sum() / len(df) * 100).values
+    def missing_report(self, df: pd.DataFrame) -> pd.DataFrame:
+        rep = pd.DataFrame({
+            "column": df.columns,
+            "missing_count": df.isna().sum().values,
+            "missing_pct": (df.isna().mean().values * 100).round(3),
+            "dtype": df.dtypes.astype(str).values,
         })
-        return m[m['missing'] > 0].sort_values('pct', ascending=False)
+        return rep.sort_values("missing_pct", ascending=False)
 
-    def handle_missing(self, df, strategy='simple', threshold=0.6):
-        """
-        Handle missing values.
-        strategy: 'simple' (median/mode), 'knn', 'iterative'
-        threshold: drop columns with missing % above this
-        """
-        df = df.copy()
-        report = self.detect_missing(df)
+    def drop_sparse_columns(self, df: pd.DataFrame, threshold: float = 0.70) -> pd.DataFrame:
+        out = df.copy()
+        sparse = out.columns[out.isna().mean() > threshold].tolist()
+        self.summary.dropped_sparse_cols = sparse
+        return out.drop(columns=sparse, errors="ignore")
 
-        # Drop excessively sparse columns
-        drop = report[report['pct'] > threshold * 100]['column'].tolist()
-        if drop:
-            df = df.drop(columns=drop)
-            self.cleaning_log.append(f"Dropped {len(drop)} sparse columns")
+    def handle_missing_values(
+        self,
+        df: pd.DataFrame,
+        numeric_strategy: str = "median",
+        categorical_strategy: str = "most_frequent",
+        use_knn_for_numeric: bool = False,
+        knn_neighbors: int = 5,
+    ) -> pd.DataFrame:
+        """Impute missing values explicitly for numeric and categorical columns."""
+        out = df.copy()
+        num_cols = out.select_dtypes(include=[np.number]).columns.tolist()
+        cat_cols = out.select_dtypes(exclude=[np.number]).columns.tolist()
 
-        num = df.select_dtypes(include=[np.number]).columns
-        cat = df.select_dtypes(include=['object', 'category']).columns
-
-        if strategy == 'simple':
-            if len(num) > 0:
-                imp = SimpleImputer(strategy='median')
-                df[num] = imp.fit_transform(df[num])
-                self.imputer = imp
-            if len(cat) > 0:
-                imp_c = SimpleImputer(strategy='most_frequent')
-                df[cat] = imp_c.fit_transform(df[cat])
-        elif strategy == 'knn':
-            if len(num) > 0:
-                imp = KNNImputer(n_neighbors=5)
-                df[num] = imp.fit_transform(df[num])
-                self.imputer = imp
-            if len(cat) > 0:
-                imp_c = SimpleImputer(strategy='most_frequent')
-                df[cat] = imp_c.fit_transform(df[cat])
-        elif strategy == 'iterative':
-            if len(num) > 0:
-                imp = IterativeImputer(
-                    estimator=RandomForestRegressor(n_estimators=50, random_state=42),
-                    max_iter=10, random_state=42
-                )
-                df[num] = imp.fit_transform(df[num])
-                self.imputer = imp
-            if len(cat) > 0:
-                imp_c = SimpleImputer(strategy='most_frequent')
-                df[cat] = imp_c.fit_transform(df[cat])
-
-        self.cleaning_log.append(f"Imputed: {strategy}")
-        return df
-
-    def handle_outliers(self, df, method='iqr', strategy='cap', threshold=3.0):
-        """Cap or remove outliers"""
-        df = df.copy()
-        num = df.select_dtypes(include=[np.number]).columns
-
-        for col in num:
-            if method == 'iqr':
-                Q1, Q3 = df[col].quantile(0.25), df[col].quantile(0.75)
-                IQR = Q3 - Q1
-                lo, hi = Q1 - threshold * IQR, Q3 + threshold * IQR
+        if num_cols:
+            if use_knn_for_numeric:
+                self.numeric_imputer = KNNImputer(n_neighbors=knn_neighbors)
+                out[num_cols] = self.numeric_imputer.fit_transform(out[num_cols])
+                self.summary.imputation_strategy = f"knn_numeric(k={knn_neighbors})+{categorical_strategy}_categorical"
             else:
-                m, s = df[col].mean(), df[col].std()
-                lo, hi = m - threshold * s, m + threshold * s
+                self.numeric_imputer = SimpleImputer(strategy=numeric_strategy)
+                out[num_cols] = self.numeric_imputer.fit_transform(out[num_cols])
+                self.summary.imputation_strategy = f"{numeric_strategy}_numeric+{categorical_strategy}_categorical"
 
-            if strategy == 'cap':
-                df[col] = df[col].clip(lo, hi)
-            elif strategy == 'remove':
-                df = df[(df[col] >= lo) & (df[col] <= hi)]
+        if cat_cols:
+            self.categorical_imputer = SimpleImputer(strategy=categorical_strategy)
+            out[cat_cols] = self.categorical_imputer.fit_transform(out[cat_cols])
 
-        return df.reset_index(drop=True)
+        return out
 
-    def remove_duplicates(self, df, subset=None):
-        n = len(df)
-        df = df.drop_duplicates(subset=subset, keep='first')
-        self.cleaning_log.append(f"Removed {n - len(df)} duplicates")
-        return df
+    def cap_outliers_iqr(self, df: pd.DataFrame, multiplier: float = 1.5) -> pd.DataFrame:
+        out = df.copy()
+        for col in out.select_dtypes(include=[np.number]).columns:
+            q1, q3 = out[col].quantile(0.25), out[col].quantile(0.75)
+            iqr = q3 - q1
+            low, high = q1 - multiplier * iqr, q3 + multiplier * iqr
+            out[col] = out[col].clip(lower=low, upper=high)
+            self.summary.outlier_caps[col] = (float(low), float(high))
+        return out
 
-    def remove_low_variance(self, df):
-        from sklearn.feature_selection import VarianceThreshold
-        num = df.select_dtypes(include=[np.number])
-        sel = VarianceThreshold(threshold=0.001)
-        sel.fit(num)
-        kept = num.columns[sel.get_support()].tolist()
-        dropped = [c for c in num.columns if c not in kept]
-        if dropped:
-            df = df.drop(columns=dropped)
-            self.cleaning_log.append(f"Removed {len(dropped)} low-variance features")
-        return df
+    def remove_duplicates(self, df: pd.DataFrame, subset: Optional[Iterable[str]] = None) -> pd.DataFrame:
+        before = len(df)
+        out = df.drop_duplicates(subset=subset, keep="first").reset_index(drop=True)
+        self.summary.duplicate_rows_removed = int(before - len(out))
+        return out
 
-    def get_report(self):
-        return "\n".join([f"{i+1}. {log}" for i, log in enumerate(self.cleaning_log)])
+    def clean(
+        self,
+        df: pd.DataFrame,
+        sparse_threshold: float = 0.70,
+        numeric_strategy: str = "median",
+        categorical_strategy: str = "most_frequent",
+        use_knn_for_numeric: bool = False,
+    ) -> pd.DataFrame:
+        out = self.drop_sparse_columns(df, threshold=sparse_threshold)
+        out = self.handle_missing_values(
+            out,
+            numeric_strategy=numeric_strategy,
+            categorical_strategy=categorical_strategy,
+            use_knn_for_numeric=use_knn_for_numeric,
+        )
+        out = self.cap_outliers_iqr(out)
+        out = self.remove_duplicates(out)
+        return out
