@@ -16,5 +16,3 @@ __pycache__/
 .vscode/
 .idea/
 
-# Trained model artifacts
-models/best_model.pkl
