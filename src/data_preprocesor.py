@@ -1,59 +1,59 @@
+"""Backwards-compatible preprocessing module.
+
+This file intentionally keeps the legacy filename `data_preprocesor.py` while
+exposing a complete scikit-learn pipeline API.
 """
-Data Preprocessing Module
-=========================
-Scaling, encoding, train/val/test splitting.
-"""
+from __future__ import annotations
 
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 class DataPreprocessor:
-    """Preprocessing pipeline."""
+    """Reusable train/inference preprocessor with fit/transform API."""
 
-    def __init__(self):
-        self.scaler = None
-        self.encoders = {}
+    def __init__(self, target_columns: list[str] | None = None) -> None:
+        self.target_columns = target_columns or []
+        self.pipeline: ColumnTransformer | None = None
+        self.numeric_columns: list[str] = []
+        self.categorical_columns: list[str] = []
 
-    def separate(self, df, target):
-        return df.drop(columns=[target]), df[target]
+    def build(self, df: pd.DataFrame) -> ColumnTransformer:
+        X = df.drop(columns=self.target_columns, errors="ignore")
+        self.categorical_columns = X.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+        self.numeric_columns = [c for c in X.columns if c not in self.categorical_columns]
 
-    def encode_categorical(self, X):
-        X = X.copy()
-        for col in X.select_dtypes(include=['object']).columns:
-            le = LabelEncoder()
-            X[col] = le.fit_transform(X[col].astype(str))
-            self.encoders[col] = le
-        return X
+        numeric_pipe = Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ])
+        categorical_pipe = Pipeline([
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        ])
 
-    def scale(self, X, method='standard'):
-        X = X.copy()
-        num = X.select_dtypes(include=[np.number]).columns
-        if method == 'standard':
-            self.scaler = StandardScaler()
-        elif method == 'minmax':
-            from sklearn.preprocessing import MinMaxScaler
-            self.scaler = MinMaxScaler()
-        else:
-            from sklearn.preprocessing import RobustScaler
-            self.scaler = RobustScaler()
-        if len(num) > 0:
-            X[num] = self.scaler.fit_transform(X[num])
-        return X
+        self.pipeline = ColumnTransformer([
+            ("num", numeric_pipe, self.numeric_columns),
+            ("cat", categorical_pipe, self.categorical_columns),
+        ])
+        return self.pipeline
 
-    def split(self, X, y, test_size=0.15, val_size=0.15, random_state=42):
-        X_temp, X_test, y_temp, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state
-        )
-        val_adj = val_size / (1 - test_size)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp, test_size=val_adj, random_state=random_state
-        )
-        return {
-            'X_train': X_train, 'X_val': X_val, 'X_test': X_test,
-            'y_train': y_train, 'y_val': y_val, 'y_test': y_test
-        }
+    def fit(self, df: pd.DataFrame):
+        if self.pipeline is None:
+            self.build(df)
+        X = df.drop(columns=self.target_columns, errors="ignore")
+        self.pipeline.fit(X)
+        return self
+
+    def transform(self, df: pd.DataFrame):
+        if self.pipeline is None:
+            raise RuntimeError("Call fit or build first.")
+        X = df.drop(columns=self.target_columns, errors="ignore")
+        return self.pipeline.transform(X)
+
+    def fit_transform(self, df: pd.DataFrame):
+        self.fit(df)
+        return self.transform(df)
