@@ -1,245 +1,285 @@
 """
-feature_enginner.py — Feature Engineering for ESS Wealth Prediction
-Targeted domain-driven feature creation.  No blind interactions (would
-create 1000+ useless features from 45 inputs).
-"""
+feature_engineer.py
+═══════════════════════════════════════════════════════════════════════════════
+FeatureEngineer — domain-driven feature creation for Ethiopian wealth prediction.
 
-import warnings
+CRISP-DM Phase 3: Data Preparation (Feature Engineering)
+Chapter 2 reference: feature transformation, interaction terms, derived variables.
+
+Design principle: every feature is grounded in poverty measurement literature
+for Sub-Saharan Africa. No blind polynomial/interaction expansion — each
+engineering choice has an explicit economic rationale.
+
+Feature groups created:
+  1. household_composition  — adults_ratio, is_large_hh, is_single_person
+  2. housing_quality_index  — improved_water/sanitation, clean_fuel, roof_quality,
+                              floor_quality, housing_quality_idx
+  3. asset_wealth_index     — modern_asset_score, has_any_modern_asset
+  4. labour_intensity       — labour_intensity, is_fully_dependent
+  5. vulnerability_index    — shock_breadth, is_multi_shock
+  6. geographic_features    — is_urban, is_addis, is_peripheral, urban_conflict
+  7. head_human_capital     — head_prime_working_age, head_elderly,
+                              educated_prime_head
+═══════════════════════════════════════════════════════════════════════════════
+"""
 
 import numpy as np
 import pandas as pd
 
-warnings.filterwarnings("ignore")
-
 
 class FeatureEngineer:
     """
-    Create domain-informed features from the cleaned ESS dataset.
-
-    All features created are interpretable and grounded in development
-    economics literature on poverty measurement in Sub-Saharan Africa.
+    Create interpretable domain-informed features from cleaned ESS data.
 
     Usage
     -----
         fe = FeatureEngineer()
-        df = fe.engineer_all(df)
-        print(fe.created_features_)   # list of new column names
+        df = fe.engineer_all(df_clean)
+        fe.created_features_   # list of new column names
+        fe.summary()           # DataFrame: feature name + economic rationale
     """
 
-    def __init__(self) -> None:
-        self.created_features_: list[str] = []
+    def __init__(self):
+        self.created_features_ = []
+        self._meta             = []
 
     def engineer_all(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply all feature engineering steps."""
-        df = df.copy()
-        df = self._household_composition(df)
-        df = self._housing_quality_index(df)
-        df = self._asset_wealth_index(df)
-        df = self._labour_intensity(df)
-        df = self._vulnerability_index(df)
-        df = self._geographic_features(df)
-        df = self._head_human_capital(df)
+        """Apply all 7 feature engineering groups in recommended order."""
+        df = self.household_composition(df)
+        df = self.housing_quality_index(df)
+        df = self.asset_wealth_index(df)
+        df = self.labour_intensity(df)
+        df = self.vulnerability_index(df)
+        df = self.geographic_features(df)
+        df = self.head_human_capital(df)
         return df
 
-    # ── 1. Household composition ──────────────────────────────────────────
+    def summary(self) -> pd.DataFrame:
+        """Return table of engineered features with economic rationale."""
+        return pd.DataFrame(self._meta)
 
-    def _household_composition(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Capture household structure effects on wealth.
+    # ── 1. Household composition ───────────────────────────────────────────────
 
-        adults_ratio     : share of adults (proxy for productive capacity)
-        is_large_hh      : 1 if hh_size >= 7 (large families often poorer)
-        is_single_person : 1 if hh_size == 1 (can be urban wealthy or isolated poor)
+    def household_composition(self, df: pd.DataFrame) -> pd.DataFrame:
         """
+        Household structure proxies for productive capacity.
+
+        adults_ratio     : adulteq / hh_size — share of adult-equivalent members
+        is_large_hh      : 1 if hh_size ≥ 7 (larger families correlated with poverty)
+        is_single_person : 1 if hh_size == 1 (elderly/isolated households)
+
+        Economic rationale: dependency burden is a primary poverty driver in
+        Sub-Saharan Africa (Foster-Greer-Thorbecke poverty decompositions).
+        """
+        df = df.copy()
         if "hh_size" in df.columns and "adulteq" in df.columns:
-            df["adults_ratio"] = (
-                df["adulteq"] / df["hh_size"].replace(0, np.nan)
-            ).clip(0, 1)
+            df["adults_ratio"]     = (df["adulteq"] / df["hh_size"]
+                                      .replace(0, np.nan)).clip(0, 1)
             df["is_large_hh"]      = (df["hh_size"] >= 7).astype(int)
             df["is_single_person"] = (df["hh_size"] == 1).astype(int)
-            self.created_features_ += ["adults_ratio","is_large_hh","is_single_person"]
+            self._add("adults_ratio",     "adulteq / hh_size — productive capacity")
+            self._add("is_large_hh",      "1 if hh_size ≥ 7 — high dependency")
+            self._add("is_single_person", "1 if hh_size == 1 — isolated household")
         return df
 
-    # ── 2. Housing quality index ──────────────────────────────────────────
+    # ── 2. Housing quality index ───────────────────────────────────────────────
 
-    def _housing_quality_index(self, df: pd.DataFrame) -> pd.DataFrame:
+    def housing_quality_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Recode ordinal housing materials to quality scores (0=worst, 1=best).
+        Recode ordinal ESS housing materials into interpretable quality scores.
 
-        ESS coding for roof: 1=iron/zinc(best) → 4=grass/leaves(worst)
-        ESS coding for wall: 1=concrete(best)  → varies
-        ESS coding for floor: 1=earth(worst)   → higher=better (reversed)
-        ESS coding for water: 1=piped(best)    → 6+=surface(worst)
-        ESS coding for toilet:1=flush(best)    → 5=open field(worst)
-        ESS coding for fuel:  lower=cleaner    → firewood/dung=worst
+        ESS coding convention: lower code = better quality (1=best, higher=worse).
+        Exception: floor type — codes vary by wave, remapped explicitly.
 
-        improved_water    : 1 if piped/tube-well/protected (codes 1-4)
-        improved_sanitation: 1 if flush/VIP/pit with slab (codes 1-3)
-        clean_fuel        : 1 if electricity/gas/kerosene (codes 1-3 in W1)
-        housing_quality   : composite 0–1 index from available components
+        improved_water      : 1 if piped/tube-well/protected source (codes 1–4)
+        improved_sanitation : 1 if flush/VIP/pit with slab (codes 1–3)
+        clean_fuel          : 1 if electricity/gas/kerosene (codes 1–3)
+        roof_quality        : 0–1 score (1=iron sheets, 0=grass/leaves)
+        floor_quality       : 0–1 score (0=earth/mud, 1=tiles/cement)
+        housing_quality_idx : composite mean of available indicators
+
+        Chapter 2 reference: feature recoding, normalisation (0–1 scaling).
         """
-        quality_parts = []
+        df    = df.copy()
+        parts = []
 
-        # Roof: 1=iron(best), higher=worse → invert
         if "roof" in df.columns:
             r = df["roof"].clip(1, 6)
             df["roof_quality"] = ((6 - r) / 5).clip(0, 1)
-            quality_parts.append(df["roof_quality"])
-            self.created_features_.append("roof_quality")
+            parts.append(df["roof_quality"])
+            self._add("roof_quality", "1-(code-1)/5  [1=iron sheets, 0=grass]")
 
-        # Floor: ESS W1 — 3=earth, 1=wood, 4=cement, 5=tiles → non-linear
-        # Recode: 1=earth/mud=0, tiles/cement=1
         if "floor" in df.columns:
             df["floor_quality"] = df["floor"].map(
-                {1: 0.5, 2: 0.5, 3: 0.0, 4: 1.0, 5: 1.0, 6: 0.25}
+                {1:0.0, 2:0.25, 3:0.0, 4:1.0, 5:1.0, 6:0.5}
             ).fillna(0.25)
-            quality_parts.append(df["floor_quality"])
-            self.created_features_.append("floor_quality")
+            parts.append(df["floor_quality"])
+            self._add("floor_quality", "recoded: earth=0, cement/tiles=1")
 
-        # Water: 1=piped into house(best), 6+=surface(worst)
         if "water" in df.columns:
             df["improved_water"] = (df["water"] <= 4).astype(float)
-            df["improved_water"][df["water"].isna()] = np.nan
-            quality_parts.append(df["improved_water"])
-            self.created_features_ += ["improved_water"]
+            df.loc[df["water"].isna(), "improved_water"] = np.nan
+            parts.append(df["improved_water"])
+            self._add("improved_water", "1 if piped/borehole/protected source")
 
-        # Toilet: 1=flush(best), 5=open field(worst)
         if "toilet" in df.columns:
             df["improved_sanitation"] = (df["toilet"] <= 3).astype(float)
-            df["improved_sanitation"][df["toilet"].isna()] = np.nan
-            quality_parts.append(df["improved_sanitation"])
-            self.created_features_.append("improved_sanitation")
+            df.loc[df["toilet"].isna(), "improved_sanitation"] = np.nan
+            parts.append(df["improved_sanitation"])
+            self._add("improved_sanitation", "1 if flush/VIP/pit-with-slab")
 
-        # Cooking fuel: 1-3=clean(electricity/gas/kerosene), 4+=solid fuels
         if "fuel" in df.columns:
             df["clean_fuel"] = (df["fuel"] <= 3).astype(float)
-            df["clean_fuel"][df["fuel"].isna()] = np.nan
-            quality_parts.append(df["clean_fuel"])
-            self.created_features_.append("clean_fuel")
+            df.loc[df["fuel"].isna(), "clean_fuel"] = np.nan
+            parts.append(df["clean_fuel"])
+            self._add("clean_fuel", "1 if electricity/gas/kerosene cooking fuel")
 
-        # Composite housing quality index
-        if quality_parts:
-            df["housing_quality_idx"] = (
-                pd.concat(quality_parts, axis=1).mean(axis=1)
-            )
-            self.created_features_.append("housing_quality_idx")
+        if parts:
+            df["housing_quality_idx"] = pd.concat(parts, axis=1).mean(axis=1)
+            self._add("housing_quality_idx", "composite mean of housing quality sub-indices")
 
         return df
 
-    # ── 3. Asset wealth index ─────────────────────────────────────────────
+    # ── 3. Asset wealth index ──────────────────────────────────────────────────
 
-    def _asset_wealth_index(self, df: pd.DataFrame) -> pd.DataFrame:
+    def asset_wealth_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Modern asset ownership index (proxy for permanent income).
+        Modern consumer asset ownership index (proxy for permanent income).
 
-        modern_asset_score : weighted sum (phone=1, TV=2, fridge=3)
-          TV > phone because TVs are more expensive; fridges highest barrier
-        has_any_modern_asset : 1 if owns at least one modern asset
+        Weighted sum: phone=1, TV=2, fridge=3 (reflects relative acquisition cost
+        and thus wealth stratification power in Ethiopian context).
+
+        modern_asset_score   : weighted sum 0–6
+        has_any_modern_asset : 1 if owns ≥ 1 modern asset
+
+        Chapter 3 reference: asset-based wealth indices in EDA/poverty analysis.
         """
+        df    = df.copy()
         score = pd.Series(0.0, index=df.index)
-        weights = {"owns_phone": 1, "owns_tv": 2, "owns_fridge": 3}
-        for col, w in weights.items():
+        for col, w in [("owns_phone", 1), ("owns_tv", 2), ("owns_fridge", 3)]:
             if col in df.columns:
                 score += df[col].fillna(0) * w
-
-        if any(c in df.columns for c in weights):
+        if any(c in df.columns for c in ["owns_phone","owns_tv","owns_fridge"]):
             df["modern_asset_score"]   = score
             df["has_any_modern_asset"] = (score > 0).astype(int)
-            self.created_features_ += ["modern_asset_score","has_any_modern_asset"]
-
+            self._add("modern_asset_score",   "phone×1 + TV×2 + fridge×3")
+            self._add("has_any_modern_asset", "1 if any modern consumer asset owned")
         return df
 
-    # ── 4. Labour intensity ───────────────────────────────────────────────
+    # ── 4. Labour intensity ────────────────────────────────────────────────────
 
-    def _labour_intensity(self, df: pd.DataFrame) -> pd.DataFrame:
+    def labour_intensity(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Labour market engagement features.
 
-        labour_intensity : n_workers / hh_size (share of household employed)
-        is_fully_dependent: 1 if no wage earners at all
+        labour_intensity   : hh_n_workers / hh_size (wage-earning share)
+        is_fully_dependent : 1 if zero wage earners (no market income)
+
+        Economic rationale: access to wage employment is the primary pathway
+        out of poverty in rural Ethiopia (World Bank Ethiopia Poverty Reports).
         """
+        df = df.copy()
         if "hh_n_workers" in df.columns and "hh_size" in df.columns:
             df["labour_intensity"] = (
                 df["hh_n_workers"] / df["hh_size"].replace(0, np.nan)
             ).fillna(0).clip(0, 1)
-            self.created_features_.append("labour_intensity")
-
+            self._add("labour_intensity", "hh_n_workers / hh_size")
         if "hh_any_wage_earner" in df.columns:
             df["is_fully_dependent"] = (df["hh_any_wage_earner"] == 0).astype(int)
-            self.created_features_.append("is_fully_dependent")
-
+            self._add("is_fully_dependent", "1 if no household wage earner")
         return df
 
-    # ── 5. Vulnerability index ────────────────────────────────────────────
+    # ── 5. Vulnerability index ─────────────────────────────────────────────────
 
-    def _vulnerability_index(self, df: pd.DataFrame) -> pd.DataFrame:
+    def vulnerability_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Aggregate shock exposure into a vulnerability score.
+        Aggregate shock exposure into composite vulnerability indicators.
 
-        shock_breadth : total types of shocks experienced (0–4)
-        is_multi_shock: 1 if affected by ≥2 distinct shock types
+        shock_breadth  : count of distinct shock types experienced (0–4)
+        is_multi_shock : 1 if exposed to ≥ 2 distinct shock types
+
+        Economic rationale: multiple simultaneous shocks produce non-linear
+        welfare losses (covariate shocks in the Ethiopian highlands literature).
         """
-        shock_cols = ["experienced_drought","experienced_illness",
-                      "experienced_death","experienced_crop_loss"]
-        available  = [c for c in shock_cols if c in df.columns]
-
-        if available:
-            df["shock_breadth"]  = df[available].fillna(0).sum(axis=1).astype(int)
+        df   = df.copy()
+        cols = [c for c in ["experienced_drought","experienced_illness",
+                             "experienced_death","experienced_crop_loss"]
+                if c in df.columns]
+        if cols:
+            df["shock_breadth"]  = df[cols].fillna(0).sum(axis=1).astype(int)
             df["is_multi_shock"] = (df["shock_breadth"] >= 2).astype(int)
-            self.created_features_ += ["shock_breadth","is_multi_shock"]
-
+            self._add("shock_breadth",  "count of distinct shock types (0–4)")
+            self._add("is_multi_shock", "1 if ≥ 2 distinct shock types experienced")
         return df
 
-    # ── 6. Geographic features ────────────────────────────────────────────
+    # ── 6. Geographic features ─────────────────────────────────────────────────
 
-    def _geographic_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def geographic_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Geography-based wealth signals.
+        Geography-based wealth signals and regional interaction terms.
 
-        is_urban          : 1 if settlement == 0 (urban)
-        is_addis          : 1 if region is ADDIS ABABA (wealthiest)
-        is_peripheral     : 1 if Afar/Somali/Gambela/Benishangul (remote)
-        urban_conflict    : is_urban × is_tigray_conflict interaction
+        is_urban          : 1 if settlement == 0 (urban centre)
+        is_addis          : 1 if Addis Ababa (highest wealth in all waves)
+        is_peripheral     : 1 if remote low-infrastructure region
+                            (Afar, Somali, Gambela, Benishangul Gumuz)
+        urban_conflict    : is_urban × is_tigray_conflict (W5 interaction)
+
+        Chapter 3 reference: geographic EDA, regional disparities.
         """
+        df = df.copy()
         if "settlement" in df.columns:
             df["is_urban"] = (df["settlement"] == 0).astype(int)
-            self.created_features_.append("is_urban")
+            self._add("is_urban", "1 if urban settlement")
 
         if "region" in df.columns:
-            region_str = df["region"].astype(str).str.upper()
-            df["is_addis"]      = (region_str == "ADDIS ABABA").astype(int)
-            df["is_peripheral"] = region_str.isin(
+            rs = df["region"].astype(str).str.upper()
+            df["is_addis"]      = (rs == "ADDIS ABABA").astype(int)
+            df["is_peripheral"] = rs.isin(
                 ["AFAR","SOMALI","GAMBELA","BENISHANGUL GUMUZ"]
             ).astype(int)
-            self.created_features_ += ["is_addis","is_peripheral"]
+            self._add("is_addis",      "1 if Addis Ababa (richest region)")
+            self._add("is_peripheral", "1 if remote/low-access region")
 
         if "is_urban" in df.columns and "is_tigray_conflict" in df.columns:
             df["urban_conflict"] = df["is_urban"] * df["is_tigray_conflict"]
-            self.created_features_.append("urban_conflict")
+            self._add("urban_conflict", "is_urban × is_tigray_conflict (W5 interaction)")
 
         return df
 
-    # ── 7. Head human capital ─────────────────────────────────────────────
+    # ── 7. Head human capital ──────────────────────────────────────────────────
 
-    def _head_human_capital(self, df: pd.DataFrame) -> pd.DataFrame:
+    def head_human_capital(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Education × age interactions for household head.
+        Age and education interaction features for the household head.
 
-        head_prime_working_age : 1 if head is 25–55 (peak productivity)
-        educated_prime_head    : educated AND prime-age interaction
-        head_elderly           : 1 if head ≥ 60 (retirement, lower income)
+        head_prime_working_age : 1 if head is 25–55 (peak earnings years)
+        head_elderly           : 1 if head ≥ 60 (post-retirement, lower income)
+        educated_prime_head    : (edu_level ≥ 3) AND prime-age interaction
+                                 (education premium concentrated in prime years)
+
+        Chapter 2 reference: feature engineering via domain-informed interactions.
         """
+        df = df.copy()
         if "head_age" in df.columns:
             df["head_prime_working_age"] = (
                 (df["head_age"] >= 25) & (df["head_age"] <= 55)
             ).astype(int)
             df["head_elderly"] = (df["head_age"] >= 60).astype(int)
-            self.created_features_ += ["head_prime_working_age","head_elderly"]
+            self._add("head_prime_working_age", "1 if head age 25–55 (peak earnings)")
+            self._add("head_elderly",           "1 if head age ≥ 60 (post-retirement)")
 
         if "head_edu_level" in df.columns and "head_prime_working_age" in df.columns:
             df["educated_prime_head"] = (
                 (df["head_edu_level"] >= 3) & (df["head_prime_working_age"] == 1)
             ).astype(int)
-            self.created_features_.append("educated_prime_head")
-
+            self._add("educated_prime_head",
+                      "head_edu_level≥3 AND age 25–55 (education premium)")
         return df
+
+    # ── Internal ───────────────────────────────────────────────────────────────
+
+    def _add(self, name: str, description: str):
+        """Register a new feature with its rationale."""
+        if name not in self.created_features_:
+            self.created_features_.append(name)
+            self._meta.append({"feature": name, "description": description})

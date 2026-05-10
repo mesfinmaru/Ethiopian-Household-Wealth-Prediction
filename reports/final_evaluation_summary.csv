@@ -1,0 +1,2 @@
+best_model,test_accuracy,test_f1_weighted,test_f1_macro,cv_f1_mean,cv_f1_std,mae_quintile,rmse_quintile
+Random Forest,0.4045,0.3955,0.3684,0.3849,0.0064,1.010059171597633,1.4726299783905115
