@@ -66,7 +66,7 @@ The repository uses survey data from the World Bank LSMS-ISA / Ethiopian Socioec
 - W4: 2018–19
 - W5: 2021–22
 
-Raw files are stored under `data/raw/`, and the processed combined dataset is written to `data/processed/all_waves_clean.csv`.
+Raw files are stored under `data/raw/`, and the processed combined dataset is written to `data/processed/all_waves_cleaned.csv`.
 
 ## Project Structure
 
@@ -174,3 +174,15 @@ This project uses World Bank LSMS-ISA / ESS survey data. Please follow the relev
 ## Last Updated
 
 2026-05-09
+
+## Deployment
+
+The web app is deployed at: https://ethiowealthpredictor.streamlit.app/
+
+Quick notes for Streamlit Cloud deployment:
+
+- Keep `requirements.txt` minimal and focused on runtime packages (avoid Windows-only packages like `pywinpty` and Jupyter-heavy packages). A reduced `requirements.txt` is already included in this repo to avoid build failures on Streamlit's Linux builders.
+- To (re)deploy on Streamlit Cloud: Sign in at https://share.streamlit.io, choose "New app", select this repository and the `main` branch, and set the app file to `app/app.py`.
+- The deployed app will read artifacts from the `models/` folder and the processed dataset at `data/processed/all_waves_cleaned.csv`.
+
+If you want, I can also add a short "About / Deployment" panel inside the Streamlit app that shows the same link and notes.
