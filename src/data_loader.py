@@ -1,7 +1,6 @@
 """
 data_loader.py
 ═══════════════════════════════════════════════════════════════════════════════
-CRISP-DM Phase 1 & 2: Data Understanding & Collection
 Ethiopian ESS/LSMS Survey Loader — 5 waves × 6 modules per wave
 
 Leakage-free design
@@ -157,7 +156,9 @@ def load_geography(wave: int) -> pd.DataFrame:
 
     # Zone ID from enumeration-area ID prefix
     ea       = raw["ea_id"].astype(str).str.strip()
-    zone_id  = ea.apply(lambda s: s[:4] if len(s) <= 11 else s[:5])
+    zone_id  = ea.apply(lambda s: s[:4] if len(s) <= 11 else s[:5]).astype(str).str.strip()
+    zone_id  = zone_id.replace("", np.nan)
+    zone_id  = zone_id.fillna(get_hh_id(raw).astype(str).str.strip().str[:4])
 
     out = pd.DataFrame({
         "household_id":  get_hh_id(raw),

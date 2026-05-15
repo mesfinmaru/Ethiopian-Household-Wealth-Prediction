@@ -1,10 +1,9 @@
 """
 sav_reader.py
 ═══════════════════════════════════════════════════════════════════════════════
-Pure-Python SPSS SAV decoder for Wave 2 (ETH_2013_ESS_v03_M_SPSS).
-No external dependencies beyond numpy and pandas.
+Python SPSS SAV decoder for Wave 2 (ETH_2013_ESS_v03_M_SPSS).
 
-CRISP-DM Phase 1 (Data Understanding): This module is the entry point for
+This module is the entry point for
 Wave 2 data. It decodes the binary SPSS format into a pandas DataFrame,
 then applies W2_COL_RENAME from config so all downstream code sees
 consistent column names across all 5 waves.

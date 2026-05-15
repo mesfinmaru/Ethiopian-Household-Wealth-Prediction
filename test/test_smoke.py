@@ -36,7 +36,8 @@ class SmokeTests(unittest.TestCase):
         self.assertTrue(hasattr(modeling, "WealthPredictor"))
 
     def test_processed_data_exists(self):
-        processed_csv = ROOT / "data" / "processed" / "all_waves_clean.csv"
+        import config as cfg
+        processed_csv = cfg.CLEANED_CSV
         self.assertTrue(processed_csv.exists(), f"Missing processed dataset: {processed_csv}")
 
 

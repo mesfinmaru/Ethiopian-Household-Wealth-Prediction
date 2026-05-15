@@ -36,7 +36,7 @@ DATA_PROC  = ROOT / "data" / "processed"
 MODEL_DIR  = ROOT / "models"
 REPORT_DIR = ROOT / "reports"
 
-CLEANED_CSV = DATA_PROC / "all_waves_clean.csv"
+CLEANED_CSV = DATA_PROC / "all_waves_cleaned.csv"
 RANKING_CSV = DATA_PROC / "regional_wealth_ranking.csv"
 
 # ── Wave metadata ──────────────────────────────────────────────────────────────

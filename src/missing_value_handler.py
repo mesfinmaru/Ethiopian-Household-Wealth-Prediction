@@ -1,9 +1,9 @@
 """
 missing_value_handler.py
 ═══════════════════════════════════════════════════════════════════════════════
-MissingValueHandler — class-reference-compatible imputation for ESS data.
+MissingValueHandler — compatible imputation for ESS data.
 
-CRISP-DM Phase 2 (Data Preparation): Handles missing values using multiple
+Handles missing values using multiple
 strategies appropriate for multi-wave survey data.
 
 Class reference interface (from Chapter 2 Data Preparation):
@@ -106,7 +106,7 @@ class MissingValueHandler:
         """
         MICE iterative imputation using RandomForest estimator.
         Most accurate but slowest — use for key continuous features.
-        Chapter 2 reference: IterativeImputer (enable_iterative_imputer).
+     
         """
         self.imputer = IterativeImputer(
             estimator=RandomForestRegressor(n_estimators=50,
@@ -165,7 +165,7 @@ class MissingValueHandler:
         """
         Apply the FITTED imputer to new data (e.g. test set).
         Ensures test data uses training-set statistics — prevents leakage.
-        Chapter 2 principle: fit on train only, transform both.
+     
         """
         if self.imputer is None:
             raise ValueError("No imputer fitted. Call impute() first.")
@@ -311,9 +311,8 @@ class MissingValueHandler:
 
     def ess_pipeline(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Recommended full missing-value pipeline for the ESS dataset.
-
-        CRISP-DM Phase 2 pipeline order:
+  
+        pipeline order:
         ──────────────────────────────────────────────────────
         Step 1: wave_coverage_fill  → zero-fill structural absences (MNAR)
         Step 2: flag_and_fill       → MNAR indicators before filling

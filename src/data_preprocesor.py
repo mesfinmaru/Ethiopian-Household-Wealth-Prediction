@@ -2,7 +2,7 @@
 data_preprocessor.py
 ═══════════════════════════════════════════════════════════════════════════════
 DataPreprocessor — sklearn ColumnTransformer pipeline + stratified splits.
-CRISP-DM Phase 3: Data Preparation (Encoding + Scaling + Splitting)
+Data Preparation (Encoding + Scaling + Splitting)
 
 Feature treatment (Chapter 2 reference):
   Continuous  → median impute → StandardScaler

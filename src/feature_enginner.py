@@ -3,9 +3,6 @@ feature_engineer.py
 ═══════════════════════════════════════════════════════════════════════════════
 FeatureEngineer — domain-driven feature creation for Ethiopian wealth prediction.
 
-CRISP-DM Phase 3: Data Preparation (Feature Engineering)
-Chapter 2 reference: feature transformation, interaction terms, derived variables.
-
 Design principle: every feature is grounded in poverty measurement literature
 for Sub-Saharan Africa. No blind polynomial/interaction expansion — each
 engineering choice has an explicit economic rationale.
@@ -98,7 +95,6 @@ class FeatureEngineer:
         floor_quality       : 0–1 score (0=earth/mud, 1=tiles/cement)
         housing_quality_idx : composite mean of available indicators
 
-        Chapter 2 reference: feature recoding, normalisation (0–1 scaling).
         """
         df    = df.copy()
         parts = []
@@ -152,7 +148,6 @@ class FeatureEngineer:
         modern_asset_score   : weighted sum 0–6
         has_any_modern_asset : 1 if owns ≥ 1 modern asset
 
-        Chapter 3 reference: asset-based wealth indices in EDA/poverty analysis.
         """
         df    = df.copy()
         score = pd.Series(0.0, index=df.index)
@@ -224,7 +219,6 @@ class FeatureEngineer:
                             (Afar, Somali, Gambela, Benishangul Gumuz)
         urban_conflict    : is_urban × is_tigray_conflict (W5 interaction)
 
-        Chapter 3 reference: geographic EDA, regional disparities.
         """
         df = df.copy()
         if "settlement" in df.columns:
@@ -257,7 +251,6 @@ class FeatureEngineer:
         educated_prime_head    : (edu_level ≥ 3) AND prime-age interaction
                                  (education premium concentrated in prime years)
 
-        Chapter 2 reference: feature engineering via domain-informed interactions.
         """
         df = df.copy()
         if "head_age" in df.columns:

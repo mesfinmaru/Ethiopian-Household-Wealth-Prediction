@@ -27,6 +27,10 @@ import warnings
 import time
 from html import escape
 from pathlib import Path
+try:
+    from src.config import CLEANED_CSV
+except Exception:
+    from config import CLEANED_CSV
 
 warnings.filterwarnings("ignore")
 
@@ -562,15 +566,24 @@ def render_status_bar(message: str | None = None,
 def load_cleaned_data() -> pd.DataFrame | None:
     """Load the pre-built cleaned CSV. Returns None if not built yet."""
     candidates = [
-        DATA_DIR / "processed" / "all_waves_clean.csv",
-        ROOT / "data" / "processed" / "all_waves_clean.csv",
-        Path("data/processed/all_waves_clean.csv"),
+        CLEANED_CSV,
+        DATA_DIR / "processed" / CLEANED_CSV.name,
+        ROOT / "data" / "processed" / CLEANED_CSV.name,
+        Path(f"data/processed/{CLEANED_CSV.name}"),
     ]
     for p in candidates:
         if p.exists():
             df = pd.read_csv(p, low_memory=False)
             if "region" in df.columns:
                 df["region"] = df["region"].astype("category")
+            if df.isna().sum().sum() > 0:
+                try:
+                    from data_cleaner import DataCleaner
+                    cleaner = DataCleaner()
+                    df = cleaner.fit_transform(df)
+                    df.to_csv(p, index=False)
+                except Exception:
+                    pass
             return df
     return None
 
@@ -579,7 +592,13 @@ def try_build_data() -> pd.DataFrame | None:
     """Try to build data via data_loader if CSVs not found."""
     try:
         from data_loader import build_all_waves
-        return build_all_waves(save=True, verbose=False)
+        from data_cleaner import DataCleaner
+
+        raw = build_all_waves(save=False, verbose=False)
+        cleaned = DataCleaner().fit_transform(raw)
+        (DATA_DIR / "processed").mkdir(parents=True, exist_ok=True)
+        cleaned.to_csv(DATA_DIR / "processed" / CLEANED_CSV.name, index=False)
+        return cleaned
     except Exception:
         return None
 
@@ -604,7 +623,8 @@ def run_pipeline_cached():
     try:
         set_status("Loading Wave 1 (2011-12)…", 5, True)
         render_status_bar()
-        from data_loader import build_wave, build_all_waves
+        from data_loader import build_wave
+        from data_cleaner import DataCleaner
         frames = []
         for i, w in enumerate([1, 2, 3, 4, 5], 1):
             progress.progress(i * 18, text=f"Loading Wave {w} ({WAVE_META[w]['year']})…")
@@ -616,11 +636,12 @@ def run_pipeline_cached():
             time.sleep(0.1)
         import pandas as pd_inner
         df = pd_inner.concat(frames, ignore_index=True, sort=False)
+        df = DataCleaner().fit_transform(df)
         progress.progress(95, text="Saving processed data…")
         set_status("Saving processed data…", 95, True)
         render_status_bar()
         (DATA_DIR / "processed").mkdir(parents=True, exist_ok=True)
-        df.to_csv(DATA_DIR / "processed" / "all_waves_clean.csv", index=False)
+        df.to_csv(DATA_DIR / "processed" / CLEANED_CSV.name, index=False)
         progress.progress(100, text="Done!")
         set_status("Dataset build complete", 100, False)
         render_status_bar()
@@ -844,6 +865,45 @@ def page_data_explorer():
         warn_box("Dataset not built. Go to Home → Build Dataset first.")
         return
 
+    # Attempt to restore previously saved preprocessor and models into session
+    try:
+        from src.data_preprocesor import DataPreprocessor
+    except Exception:
+        from data_preprocesor import DataPreprocessor
+    try:
+        from src.modeling import WealthPredictor
+    except Exception:
+        from modeling import WealthPredictor
+
+    # If saved artifacts exist on disk, load them into session_state so refreshes keep trained models
+    try:
+        if "wp" not in st.session_state:
+            dp = DataPreprocessor()
+            try:
+                dp.load(str(MODEL_DIR / "preprocessor.pkl"))
+                st.session_state["preprocessor"] = (dp.pipeline_, dp.label_encoder_, dp.feature_names_)
+            except Exception:
+                # preprocessor not present or failed to load
+                pass
+
+            wp = WealthPredictor()
+            try:
+                wp.load(str(MODEL_DIR))
+                # If a best model was loaded, populate minimal session state entries
+                if getattr(wp, "best_model_", None) is not None:
+                    st.session_state["wp"] = wp
+                    st.session_state["best_name"] = getattr(wp, "best_name_", "saved_model") or "saved_model"
+                    # minimal placeholder for model_results so Results tab is accessible
+                    import pandas as _pd
+                    if "model_results" not in st.session_state:
+                        st.session_state["model_results"] = _pd.DataFrame([
+                            {"model": st.session_state["best_name"], "accuracy": 0.0}
+                        ])
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # Wave selector
     wave_options = {f"W{w} · {WAVE_META[w]['year']} ({WAVE_META[w]['context']})": w
                     for w in sorted(df["wave"].unique())}
@@ -948,12 +1008,12 @@ def page_eda():
         df_eng = df.copy()
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Distributions", "Bivariate", "Correlations",
+        "Univariate", "Bivariate", "Multivariate",
         "Temporal Trends", "Shocks"
     ])
 
     with tab1:
-        st.markdown("**Continuous feature distributions by wealth quintile**")
+        st.markdown("**Univariate: continuous feature distributions by wealth quintile**")
         cont_opts = [c for c in ["hh_size","head_age","rooms","housing_score",
                                   "housing_quality_idx","modern_asset_score",
                                   "dependency_ratio","adults_ratio"]
@@ -988,7 +1048,7 @@ def page_eda():
         plt.close()
 
     with tab2:
-        st.markdown("**Asset ownership & utility access rate by wealth quintile**")
+        st.markdown("**Bivariate: asset ownership & utility access rate by wealth quintile**")
         asset_cols = [c for c in ["owns_phone","owns_tv","owns_fridge",
                                    "has_electricity","improved_water",
                                    "improved_sanitation","clean_fuel",
@@ -1015,7 +1075,7 @@ def page_eda():
         plt.close()
 
     with tab3:
-        st.markdown("**Pearson correlation with `cons_quint` (target)**")
+        st.markdown("**Multivariate: Pearson correlation with `cons_quint` (target)**")
         num_cols = df_eng.select_dtypes(include=[np.number]).columns.tolist()
         num_cols = [c for c in num_cols if c not in
                     ("household_id","survey_weight","wave")]
@@ -1197,8 +1257,20 @@ def page_preprocessing():
         try:
             from missing_value_handler import MissingValueHandler
             handler = MissingValueHandler()
-            strategy_df = handler.missing_report(df)
-            if strategy_df.empty:
+            try:
+                strategy_df = handler.missing_report(df)
+            except Exception:
+                # Fallback: compute missing-value summary directly if handler fails
+                miss = df.isnull().sum()
+                pct  = (miss / len(df) * 100).round(2)
+                strategy_df = (
+                    pd.DataFrame({"feature": miss.index, "n_missing": miss.values, "pct_missing": pct.values})
+                    .loc[lambda d: d["n_missing"] > 0]
+                    .sort_values("pct_missing", ascending=False)
+                    .reset_index(drop=True)
+                )
+
+            if strategy_df is None or strategy_df.empty:
                 st.success("✅ No missing values detected.")
             else:
                 st.markdown(f"**{len(strategy_df)} features with missing values:**")
@@ -1350,6 +1422,12 @@ def page_modelling():
                                                 cv_folds=int(cv_folds))
                     dp.save(str(MODEL_DIR / "preprocessor.pkl"))
                     wp.save(str(MODEL_DIR))
+                    # persist training results so metrics reappear after reload
+                    try:
+                        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+                        joblib.dump(results, MODEL_DIR / "model_results.pkl")
+                    except Exception:
+                        pass
 
                     set_status("Model training complete", 100, False)
                     render_status_bar()
@@ -1449,9 +1527,8 @@ def page_modelling():
                     st.success(f"✅ {len(reg_df)} region models trained")
                 except Exception as e:
                     st.error(f"Region modelling failed: {e}")
-
-        if "ranking" in st.session_state:
-            st.dataframe(st.session_state["ranking"], use_container_width=True)
+                if "ranking" in st.session_state:
+                    st.dataframe(st.session_state["ranking"], use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1463,15 +1540,42 @@ def page_regional_map():
 
     df = load_cleaned_data()
     if df is None:
-        warn_box("Dataset not built.")
+        warn_box("Dataset not built. Go to Home → Build Dataset first.")
         return
 
-    # Compute regional stats from raw data
+    # Try to obtain region ranking from session, saved CSV, or compute if possible
+    try:
+        from src.config import RANKING_CSV
+    except Exception:
+        from config import RANKING_CSV
+
+    region_stats = None
+    if "ranking" in st.session_state:
+        region_stats = st.session_state["ranking"]
+    elif RANKING_CSV.exists():
+        region_stats = pd.read_csv(RANKING_CSV)
+    else:
+        # attempt to compute using loaded WealthPredictor if available
+        if "wp" in st.session_state and "df_engineered" in st.session_state:
+            try:
+                wp = st.session_state["wp"]
+                dfe = st.session_state["df_engineered"]
+                feat_names = st.session_state.get("splits", {}).get("feature_names", [])
+                per_region = wp.train_per_region(dfe, feat_names, test_size=0.20)
+                region_stats = wp.regional_ranking(per_region)
+            except Exception:
+                region_stats = None
+
+    if region_stats is None or (hasattr(region_stats, "empty") and region_stats.empty):
+        info_box("No regional ranking available. Train per-region models or build dataset.")
+        return
+
+    # Normalize column name for plotting logic
+    if "mean_pred_quintile" in region_stats.columns and "mean_quintile" not in region_stats.columns:
+        region_stats = region_stats.rename(columns={"mean_pred_quintile": "mean_quintile"})
+
     region_stats = (
-        df.groupby("region", observed=True)["cons_quint"]
-        .agg(n_households="count", mean_quintile="mean",
-             std_quintile="std", pct_q1=lambda x: (x==1).mean()*100,
-             pct_q5=lambda x: (x==5).mean()*100)
+        region_stats
         .round(3).reset_index()
         .sort_values("mean_quintile", ascending=False)
         .reset_index(drop=True)
@@ -1639,8 +1743,8 @@ def page_predict():
         settlement = c2.selectbox("Settlement", ["Rural","Urban","Small town","Large town"])
         
         # Allow selection of survey year
-        year_options = ["2021–22 (W5, Latest)", "2018–19 (W4)", "2015–16 (W3)", "2013–14 (W2)", "2011–12 (W1)", "2027 (Projection)"]
-        year_selected = c3.selectbox("Survey Year", year_options, index=0)
+        year_options = ["2021–22 (W5, Latest)", "2018–19 (W4)", "2015–16 (W3)", "2013–14 (W2)", "2011–12 (W1)", "2027(Projection)"]
+        year_selected = c3.selectbox("Survey Year", year_options, index=5)
         
         # Map year to wave number
         year_to_wave = {
@@ -1649,13 +1753,13 @@ def page_predict():
             "2015–16 (W3)": 3,
             "2013–14 (W2)": 2,
             "2011–12 (W1)": 1,
-            "2027 (Projection)": 5,  # Use latest model for 2027 projection
+            "2027(Projection)": 5,  # Use latest model for 2027 projection
         }
         wave_num = year_to_wave[year_selected]
         wave = year_selected
         
         if "2027" in year_selected:
-            st.info("📊 **2027 Projection:** Using the latest trained model (2021–22 data). Actual 2027 data not yet available.")
+            st.info("📊 **2027(Projection):** Using the latest trained model (2021–22 data). Actual 2027 data not yet available.")
 
 
         st.markdown("#### Household Demographics")

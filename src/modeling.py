@@ -2,21 +2,17 @@
 modeling.py
 ═══════════════════════════════════════════════════════════════════════════════
 WealthPredictor + ModelEvaluator
-CRISP-DM Phase 4 & 5: Modelling and Evaluation
 
 WealthPredictor: multi-class classification for cons_quint (1–5)
   Trains: Logistic Regression, Decision Tree, Random Forest, KNN, Naive Bayes,
           Gradient Boosting, XGBoost, LightGBM (if installed)
   Modes:  overall Ethiopia | per-region | regional ranking | pairwise comparison
 
-ModelEvaluator: comprehensive evaluation toolkit from class reference
-  (Chapter 4 model_evaluation.py) extended for 5-class wealth quintile output.
+ModelEvaluator: comprehensive evaluation toolkit.
 
 TARGET: cons_quint (1=poorest, 5=wealthiest) — 5-class classification.
 INPUT : legitimate proxy features only. NEVER consumption aggregates.
 
-Chapter 4 reference: ClassificationPipeline, cross-validation, ROC curves,
-  confusion matrix, feature importance, learning curves.
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -256,7 +252,7 @@ class WealthPredictor:
 
         Metrics: accuracy, weighted F1, macro F1, CV F1 mean ± std.
         Returns DataFrame sorted by weighted_f1 descending.
-        Chapter 4 reference: train_all_models, cross_validate_models.
+        train_all_models, cross_validate_models.
         """
         cv   = StratifiedKFold(n_splits=cv_folds, shuffle=True,
                        random_state=self.rs)
@@ -333,7 +329,7 @@ class WealthPredictor:
         """
         GridSearchCV for the specified model.
         Returns CV results DataFrame; best params stored in .attrs.
-        Chapter 4 reference: GridSearchCV hyperparameter optimisation.
+        GridSearchCV hyperparameter optimisation.
         """
         grids = {
             "XGBoost":        {"n_estimators":[200,400],"max_depth":[4,6,8],

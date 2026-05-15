@@ -1,10 +1,8 @@
 """
 data_cleaner.py
 ═══════════════════════════════════════════════════════════════════════════════
-DataCleaner — CRISP-DM Phase 2: Data Cleaning
 Wraps MissingValueHandler with outlier detection, variance filtering,
 and coverage flags. Follows the class-reference DataPreprocessor structure
-from Chapter 2 Data Preparation (course materials).
 
 Pipeline: drop_missing_target → impute → outliers → coverage_flags → low_variance
 ═══════════════════════════════════════════════════════════════════════════════
@@ -190,6 +188,15 @@ class DataCleaner:
         df = self.handle_outliers(df)
         df = self.add_coverage_flags(df)
         df = self.drop_zero_variance(df)
+
+        # Drop panel-link columns from the exported clean dataset.
+        # They are useful for diagnostics, but not for modeling, and they are
+        # the only remaining source of nulls after the cleaning pipeline.
+        id_cols = [c for c in ("household_id_w1",) if c in df.columns]
+        if id_cols:
+            df = df.drop(columns=id_cols)
+            self._log.append({"step": "drop_identifier_columns",
+                              "dropped": id_cols})
         return df
 
     # ── Reporting ──────────────────────────────────────────────────────────────
