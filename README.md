@@ -171,18 +171,13 @@ The project is built with Python and the scientific stack, including Streamlit, 
 
 This project uses World Bank LSMS-ISA / ESS survey data. Please follow the relevant data access and citation requirements from the source provider.
 
-## Last Updated
-
-2026-05-09
 
 ## Deployment
 
 The web app is deployed at: https://ethiowealthpredictor.streamlit.app/
 
-Quick notes for Streamlit Cloud deployment:
+## Last Updated
 
-- Keep `requirements.txt` minimal and focused on runtime packages (avoid Windows-only packages like `pywinpty` and Jupyter-heavy packages). A reduced `requirements.txt` is already included in this repo to avoid build failures on Streamlit's Linux builders.
-- To (re)deploy on Streamlit Cloud: Sign in at https://share.streamlit.io, choose "New app", select this repository and the `main` branch, and set the app file to `app/app.py`.
-- The deployed app will read artifacts from the `models/` folder and the processed dataset at `data/processed/all_waves_cleaned.csv`.
+2026-05-16
 
-If you want, I can also add a short "About / Deployment" panel inside the Streamlit app that shows the same link and notes.
+
