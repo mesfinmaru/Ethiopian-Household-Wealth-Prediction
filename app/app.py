@@ -1576,6 +1576,16 @@ def page_regional_map():
     if "mean_pred_quintile" in region_stats.columns and "mean_quintile" not in region_stats.columns:
         region_stats = region_stats.rename(columns={"mean_pred_quintile": "mean_quintile"})
 
+    # Normalize pct column names from modelling layer
+    if "pct_q1_poorest" in region_stats.columns and "pct_q1" not in region_stats.columns:
+        region_stats = region_stats.rename(columns={"pct_q1_poorest": "pct_q1"})
+    if "pct_q5_wealthiest" in region_stats.columns and "pct_q5" not in region_stats.columns:
+        region_stats = region_stats.rename(columns={"pct_q5_wealthiest": "pct_q5"})
+    # ensure expected numeric columns exist
+    for col in ("pct_q1", "pct_q5"):
+        if col not in region_stats.columns:
+            region_stats[col] = 0.0
+
     region_stats = (
         region_stats
         .round(3).reset_index()
