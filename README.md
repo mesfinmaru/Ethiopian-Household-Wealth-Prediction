@@ -161,7 +161,7 @@ If the combined dataset is missing, open the Home page and click **Build Dataset
 - The project avoids leakage by excluding consumption aggregate columns from features.
 - Wave 2 uses a custom SPSS decoder to handle `.sav` files without external parsing dependencies.
 - Saved artifacts are written to `models/` and processed outputs to `data/processed/`.
-- Some source filenames retain historical typos from the original project structure, such as `data_preprocesor.py` and `feature_enginner.py`.
+
 
 ## Dependencies
 
