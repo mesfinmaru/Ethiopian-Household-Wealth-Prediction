@@ -27,10 +27,6 @@ import warnings
 import time
 from html import escape
 from pathlib import Path
-try:
-    from src.config import CLEANED_CSV
-except Exception:
-    from config import CLEANED_CSV
 
 warnings.filterwarnings("ignore")
 
@@ -41,8 +37,14 @@ SRC_DIR  = ROOT / "src"
 DATA_DIR = ROOT / "data"
 MODEL_DIR= ROOT / "models"
 
+# Ensure repository `src/` is importable on Streamlit Cloud and other runtimes
 sys.path.insert(0, str(SRC_DIR))
 sys.path.insert(0, str(ROOT))
+
+try:
+    from src.config import CLEANED_CSV
+except Exception:
+    from config import CLEANED_CSV
 
 import numpy as np
 import pandas as pd
