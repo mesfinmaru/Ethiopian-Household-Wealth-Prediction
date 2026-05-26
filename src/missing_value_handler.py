@@ -6,7 +6,7 @@ MissingValueHandler — compatible imputation for ESS data.
 Handles missing values using multiple
 strategies appropriate for multi-wave survey data.
 
-Class reference interface (from Chapter 2 Data Preparation):
+Core imputation methods:
   mean_impute, median_impute, mode_impute, constant_impute,
   knn_impute, iterative_impute, forward_fill, backward_fill,
   interpolate_impute, impute (dispatcher), transform
@@ -59,7 +59,7 @@ class MissingValueHandler:
         self.method  = None
         self.log_    = []
 
-    # ── Class-reference interface methods ─────────────────────────────────────
+    # ── Core imputation methods ───────────────────────────────────────────────
 
     def mean_impute(self, X: pd.DataFrame) -> pd.DataFrame:
         """Fill missing values with column means (sensitive to outliers)."""
@@ -69,7 +69,7 @@ class MissingValueHandler:
                             columns=X.columns, index=X.index)
 
     def median_impute(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Fill with column medians — robust to outliers (Chapter 2 recommended)."""
+        """Fill with column medians — robust to outliers."""
         self.imputer = SimpleImputer(strategy="median")
         self.method  = "median"
         return pd.DataFrame(self.imputer.fit_transform(X),
@@ -93,7 +93,7 @@ class MissingValueHandler:
         """
         K-Nearest Neighbours imputation — preserves local data structure.
         More accurate than mean/median for spatially clustered survey data.
-        Chapter 2 reference: KNNImputer from sklearn.impute.
+        Uses KNNImputer from sklearn.impute.
         """
         self.imputer = KNNImputer(n_neighbors=n_neighbors)
         self.method  = "knn"

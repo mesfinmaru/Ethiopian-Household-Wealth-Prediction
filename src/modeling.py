@@ -54,15 +54,14 @@ from config import MIN_REGION_N, MODEL_DIR, RANDOM_STATE, TARGET
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# ModelEvaluator — class-reference interface (Chapter 4)
+# ModelEvaluator — evaluation utilities for model comparison
 # ════════════════════════════════════════════════════════════════════════════════
 
 class ModelEvaluator:
     """
     Comprehensive evaluation toolkit for classification and regression.
 
-    Mirrors the class-reference ModelEvaluator from Chapter 4 but extended
-    for 5-class wealth quintile output (multi-class metrics, per-class ROC).
+    Provides evaluation utilities for 5-class wealth quintile prediction.
 
     Usage
     -----
@@ -121,7 +120,7 @@ class ModelEvaluator:
         """
         Stratified k-fold cross-validation.
         Returns DataFrame with fold scores and mean ± std.
-        Chapter 4 reference: cross_val_score, StratifiedKFold.
+        Uses cross_val_score and StratifiedKFold.
         """
         skf     = StratifiedKFold(n_splits=cv_folds, shuffle=True,
                                    random_state=RANDOM_STATE)
@@ -141,7 +140,7 @@ class ModelEvaluator:
         """
         Learning curve analysis: detects overfitting/underfitting.
         Returns DataFrame with train_size, train_score, val_score.
-        Chapter 4 reference: learning_curve from sklearn.
+        Uses learning_curve from sklearn.
         """
         sizes = np.linspace(0.1, 1.0, 10)
         skf   = StratifiedKFold(n_splits=cv_folds, shuffle=True,
@@ -184,9 +183,8 @@ class WealthPredictor:
     """
     Train and evaluate wealth quintile classifiers for Ethiopia.
 
-    Combines the class-reference ClassificationPipeline interface with
-    ESS-specific features: per-region models, regional wealth ranking,
-    and pairwise regional wealth comparison.
+    Combines standard classification training with ESS-specific features:
+    per-region models, regional wealth ranking, and pairwise comparison.
 
     Usage
     -----
@@ -209,7 +207,7 @@ class WealthPredictor:
         self.evaluator      = ModelEvaluator()
         self.label_encoder_ = None
 
-    # ── Model registry (Chapter 4 reference: all algorithms) ─────────────────
+    # ── Model registry used for comparison and selection ────────────────────
 
     def _build_models(self) -> dict:
         """Build the full model registry with appropriate hyper-parameters."""
@@ -497,7 +495,7 @@ class WealthPredictor:
         """
         Feature importances from the best model or a region model.
         Works for tree-based models; falls back to |coef| for LR.
-        Chapter 4 reference: feature importance analysis.
+        Feature importance analysis for the trained model.
         """
         if region:
             clf = self.region_models_[region]["model"]

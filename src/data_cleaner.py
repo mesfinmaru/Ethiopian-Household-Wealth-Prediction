@@ -2,7 +2,7 @@
 data_cleaner.py
 ═══════════════════════════════════════════════════════════════════════════════
 Wraps MissingValueHandler with outlier detection, variance filtering,
-and coverage flags. Follows the class-reference DataPreprocessor structure
+and coverage flags.
 
 Pipeline: drop_missing_target → impute → outliers → coverage_flags → low_variance
 ═══════════════════════════════════════════════════════════════════════════════
@@ -19,10 +19,9 @@ class DataCleaner:
     """
     Full data cleaning pipeline for the merged ESS multi-wave dataset.
 
-    Follows class-reference interface from Chapter 2:
-      load_data, describe_data, detect_missing_values,
-      impute_missing, detect_outliers, handle_outliers,
-      fit_transform (main pipeline)
+        Provides a complete data-cleaning workflow with data loading,
+        summary statistics, missing-value handling, outlier control,
+        coverage flags, and feature filtering.
 
     Usage
     -----
@@ -36,7 +35,7 @@ class DataCleaner:
         self.handler = MissingValueHandler()
         self._log    = []
 
-    # ── Step-by-step methods (class-reference interface) ──────────────────────
+    # ── Step-by-step methods used by the cleaning pipeline ───────────────────
 
     def load_data(self, filepath: str) -> pd.DataFrame:
         """Load the combined CSV produced by build_all_waves()."""
@@ -52,18 +51,18 @@ class DataCleaner:
         return df
 
     def describe_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Numeric summary statistics (Chapter 2: data understanding step)."""
+        """Numeric summary statistics for the loaded dataset."""
         return df.describe().round(3)
 
     def detect_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Return missing value report with recommended strategies."""
+        """Return a missing-value report with recommended strategies."""
         return self.handler.missing_report(df)
 
     def drop_missing_target(self, df: pd.DataFrame,
                             target: str = "cons_quint") -> pd.DataFrame:
         """
         Drop rows where the prediction target is NaN.
-        CRISP-DM: target availability is a prerequisite for supervised learning.
+        Target availability is required before supervised learning.
         """
         before = len(df)
         df     = df.dropna(subset=[target]).copy()
@@ -75,8 +74,8 @@ class DataCleaner:
     def impute_missing(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Run the full ESS missing-value pipeline via MissingValueHandler.ess_pipeline().
-        Seven-step strategy (wave coverage → MNAR flag → W2 gaps → group →
-        mode → KNN → global median).
+        The pipeline handles structural gaps, MNAR features, W2 donor filling,
+        grouped imputation, and final fallback rules.
         """
         before = df.isnull().sum().sum()
         df     = self.handler.ess_pipeline(df)
@@ -90,9 +89,9 @@ class DataCleaner:
                         cols: list = None,
                         multiplier: float = 3.0) -> pd.DataFrame:
         """
-        IQR-based outlier detection per wave (Chapter 2: outlier analysis).
-        Returns summary DataFrame of affected values per feature per wave.
-        Uses IQR × 3.0 (conservative — only flags extreme outliers).
+        IQR-based outlier detection per wave.
+        Returns a summary DataFrame of affected values per feature per wave.
+        Uses IQR x 3.0 to flag only extreme outliers.
         """
         if cols is None:
             cols = ["head_age","rooms","hh_n_workers",
@@ -117,8 +116,8 @@ class DataCleaner:
                         cols: list = None,
                         multiplier: float = 3.0) -> pd.DataFrame:
         """
-        Cap outliers at IQR × multiplier per wave (winsorisation).
-        Conservative default (3.0) preserves legitimate extreme values.
+        Cap outliers at IQR x multiplier per wave (winsorisation).
+        The conservative default preserves legitimate extreme values.
         """
         if cols is None:
             cols = ["head_age","rooms","hh_n_workers",
@@ -142,8 +141,7 @@ class DataCleaner:
     def add_coverage_flags(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add binary flags marking which waves have richer data coverage.
-        Helps tree models distinguish 'absent feature' from 'zero value',
-        which are semantically different for structural absences.
+        These flags help tree models distinguish an absent feature from a true zero.
         """
         df = df.copy()
         df["has_full_housing"]    = df["wave"].isin([1, 2, 3]).astype(int)
@@ -155,8 +153,8 @@ class DataCleaner:
     def drop_zero_variance(self, df: pd.DataFrame,
                            threshold: float = 1e-4) -> pd.DataFrame:
         """
-        Remove numeric columns with near-zero variance (uninformative features).
-        Chapter 2: feature validation — variance threshold filtering.
+        Remove numeric columns with near-zero variance.
+        This filters out features that are unlikely to help modeling.
         """
         excl  = ["cons_quint","household_id","wave","zone_id"]
         num   = [c for c in df.select_dtypes(include=[np.number]).columns
@@ -176,10 +174,10 @@ class DataCleaner:
 
     def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Full CRISP-DM Phase 2 cleaning pipeline:
+                Full cleaning pipeline:
           1. drop_missing_target
           2. impute_missing  (7-step ESS pipeline)
-          3. handle_outliers (IQR×3 per wave)
+                    3. handle_outliers (IQR x 3 per wave)
           4. add_coverage_flags
           5. drop_zero_variance
         """
@@ -190,8 +188,7 @@ class DataCleaner:
         df = self.drop_zero_variance(df)
 
         # Drop panel-link columns from the exported clean dataset.
-        # They are useful for diagnostics, but not for modeling, and they are
-        # the only remaining source of nulls after the cleaning pipeline.
+        # They are useful for diagnostics, but not for modeling.
         id_cols = [c for c in ("household_id_w1",) if c in df.columns]
         if id_cols:
             df = df.drop(columns=id_cols)
@@ -202,15 +199,15 @@ class DataCleaner:
     # ── Reporting ──────────────────────────────────────────────────────────────
 
     def report(self) -> pd.DataFrame:
-        """Return cleaning log as a DataFrame (each step is one row)."""
+        """Return the cleaning log as a DataFrame (each step is one row)."""
         return pd.DataFrame(self._log)
 
     def missing_report(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Delegate to MissingValueHandler.missing_report()."""
+        """Return the missing-value report generated by MissingValueHandler."""
         return self.handler.missing_report(df)
 
     def stb_missing(self, df: pd.DataFrame) -> pd.DataFrame:
-        """sidetable-style missing summary (n_missing, pct, cumulative)."""
+        """Return a missing summary with counts, percentages, and cumulative share."""
         miss  = df.isnull().sum()
         pct   = (miss / len(df) * 100).round(2)
         out   = pd.DataFrame({"n_missing":miss,"pct_missing":pct})

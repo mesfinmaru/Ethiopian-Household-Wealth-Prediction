@@ -4,7 +4,7 @@ data_preprocessor.py
 DataPreprocessor — sklearn ColumnTransformer pipeline + stratified splits.
 Data Preparation (Encoding + Scaling + Splitting)
 
-Feature treatment (Chapter 2 reference):
+Feature treatment:
   Continuous  → median impute → StandardScaler
   Binary      → constant(0) impute → passthrough
   Ordinal     → most_frequent impute → OrdinalEncoder
@@ -30,7 +30,7 @@ from config import MODEL_DIR, RANDOM_STATE, TARGET, TEST_SIZE, VAL_SIZE, MIN_REG
 
 class DataPreprocessor:
     """
-    Prepare the cleaned + feature-engineered ESS dataset for machine learning.
+    Prepare the cleaned and feature-engineered ESS dataset for machine learning.
 
     Usage
     -----
@@ -39,7 +39,7 @@ class DataPreprocessor:
 
         # splits keys:
         #   X_train, X_val, X_test  : processed numpy arrays
-        #   y_train, y_val, y_test  : int arrays (cons_quint 1–5)
+        #   y_train, y_val, y_test  : int arrays (cons_quint 1-5)
         #   feature_names           : output feature names (post-OHE)
         #   split_sizes             : {'train':N, 'val':N, 'test':N}
 
@@ -48,7 +48,7 @@ class DataPreprocessor:
         dp.load()                      # reload for inference
     """
 
-    # ── Feature column groups (Chapter 2: feature type classification) ─────────
+    # ── Feature column groups used by the preprocessing pipeline ─────────────
     CONTINUOUS = [
         "hh_size","adulteq","head_age","head_age_sq",
         "hh_n_workers","hh_avg_weeks_worked",
@@ -92,7 +92,7 @@ class DataPreprocessor:
         Parameters
         ----------
         df        : cleaned + feature-engineered DataFrame
-        test_size : fraction for final held-out test set (default 0.20)
+        test_size : fraction for the final held-out test set (default 0.20)
         val_size  : fraction of remaining data for validation (default 0.15)
 
         Returns
@@ -189,7 +189,7 @@ class DataPreprocessor:
                 "n_total": len(sub), "region": region}
 
     def feature_group_summary(self) -> pd.DataFrame:
-        """Return feature group counts table for notebook display."""
+        """Return a feature-group summary for reporting and notebook display."""
         groups = {"Continuous": self.CONTINUOUS, "Binary": self.BINARY,
                   "Ordinal":    self.ORDINAL,     "Nominal": self.NOMINAL}
         return pd.DataFrame([
@@ -208,7 +208,7 @@ class DataPreprocessor:
         return names
 
     def save(self, path: str = None):
-        """Persist fitted pipeline + label encoder to models/ directory."""
+        """Persist the fitted pipeline and label encoder to the models directory."""
         from pathlib import Path
         dest = Path(path) if path else MODEL_DIR / "preprocessor.pkl"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -216,7 +216,7 @@ class DataPreprocessor:
         print(f"Preprocessor saved → {dest}")
 
     def load(self, path: str = None):
-        """Load a previously saved pipeline."""
+        """Load a previously saved preprocessing pipeline."""
         from pathlib import Path
         src = Path(path) if path else MODEL_DIR / "preprocessor.pkl"
         if not src.exists():

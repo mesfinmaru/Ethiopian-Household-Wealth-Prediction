@@ -156,6 +156,32 @@ If the combined dataset is missing, open the Home page and click **Build Dataset
 5. Explore regional wealth patterns and compare regions.
 6. Use the prediction form for a single-household estimate.
 
+## Final Submission Guide
+
+Use this structure during your final demo or report so each stage is clearly explained.
+
+### What to explain by app page
+
+1. Home: problem statement, target variable, dataset size, and CRISP-DM stages.
+2. Data Explorer: data quality checks, missingness by wave, and regional coverage.
+3. EDA: key univariate and bivariate patterns, and feature relevance.
+4. Preprocessing: cleaning log, missing-value handling strategy, and before/after null counts.
+5. Modelling: training setup, model comparison metrics, and best-model selection.
+6. Regional Wealth Map: region-level ranking and side-by-side regional differences.
+7. Predict Household: deployment flow with single-record input and class probabilities.
+8. About: methods summary, data source attribution, and ethical limitations.
+
+### What to explain by source module
+
+1. src/sav_reader.py: reads W2 SPSS files and standardizes truncated names.
+2. src/data_loader.py: loads and merges all waves into one analysis dataset.
+3. src/missing_value_handler.py: applies survey-aware missing-value handling.
+4. src/data_cleaner.py: runs full cleaning, outlier capping, and data quality controls.
+5. src/feature_enginner.py: creates engineered features used by the models.
+6. src/data_preprocesor.py: builds preprocessing pipelines and split strategy.
+7. src/modeling.py: trains, evaluates, compares, and persists models.
+8. app/app.py: presents the end-to-end workflow and prediction interface.
+
 ## Notes
 
 - The project avoids leakage by excluding consumption aggregate columns from features.

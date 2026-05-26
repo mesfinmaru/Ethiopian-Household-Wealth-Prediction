@@ -7,8 +7,8 @@ InSy3056 Data Science Application, Debre Berhan University
 All constants, directory paths, and survey column mappings are defined here.
 All other modules import from config — do not hardcode paths or column names.
 
-CRISP-DM Reference: Phase 1 (Business Understanding) defines the project
-scope and target variable. All constants here reflect that design.
+CRISP-DM Phase 1 (Business Understanding) defines the project scope
+and target variable. All constants here reflect that design.
 
 Wave section layout (verified from actual ESS files):
   W1/W2/W3 : sect7=enterprise | sect8=shocks    | sect9=housing+assets
@@ -42,7 +42,7 @@ RANKING_CSV = DATA_PROC / "regional_wealth_ranking.csv"
 # ── Wave metadata ──────────────────────────────────────────────────────────────
 WAVE_DIRS = {
     1: "ETH_2011_ERSS_v02_M_CSV",
-    2: "ETH_2013_ESS_v03_M_SPSS",   # SPSS .sav — W2 is MANDATORY
+    2: "ETH_2013_ESS_v03_M_SPSS",   # SPSS .sav — W2
     3: "ETH_2015_ESS_v03_M_CSV",
     4: "ETH_2018_ESS_v04_M_CSV",
     5: "ETH_2021_ESPS-W5_v02_M_CSV",

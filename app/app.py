@@ -58,7 +58,7 @@ import joblib
 # ── Streamlit page config ──────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Ethiopian Wealth Predictor",
-    page_icon="ETH",
+    page_icon="E",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -462,11 +462,11 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 
 QUINTILE_LABELS = {
-    1: ("Q1 — Poorest 20%",   "q1", "●"),
-    2: ("Q2 — Lower Middle",  "q2", "●"),
-    3: ("Q3 — Middle",        "q3", "●"),
-    4: ("Q4 — Upper Middle",  "q4", "●"),
-    5: ("Q5 — Wealthiest 20%","q5", "●"),
+    1: ("Q1 - Poorest 20%",   "q1", ""),
+    2: ("Q2 - Lower Middle",  "q2", ""),
+    3: ("Q3 - Middle",        "q3", ""),
+    4: ("Q4 - Upper Middle",  "q4", ""),
+    5: ("Q5 - Wealthiest 20%","q5", ""),
 }
 
 REGION_LIST = [
@@ -484,6 +484,7 @@ WAVE_META = {
 }
 
 COLORS5  = ["#C8102E","#F4830A","#F6C94E","#52B788","#1565C0"]
+SHOW_STATUS_BAR = False
 PLT_STYLE = {
     "figure.facecolor":  "#161B22",
     "axes.facecolor":    "#161B22",
@@ -504,7 +505,7 @@ def q_pill(q: int) -> str:
     return f'<span class="q-pill {cls}">{lbl}</span>'
 
 def metric_card(value, label, delta=None):
-    delta_html = f'<span style="font-size:.7rem;color:#52B788;">▲ {delta}</span>' if delta else ""
+    delta_html = f'<span style="font-size:.7rem;color:#52B788;">+ {delta}</span>' if delta else ""
     return (
         f'<div class="metric-card">'
         f'<span class="mc-val">{value}</span>'
@@ -520,7 +521,7 @@ def sec_header(icon, title):
     )
 
 def info_box(text):
-    st.markdown(f'<div class="info-box">ℹ️ &nbsp;{text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
 
 def warn_box(text):
     st.markdown(f'<div class="warn-box">{text}</div>', unsafe_allow_html=True)
@@ -534,6 +535,9 @@ def set_status(message: str, progress: int = 0, active: bool = True):
 def render_status_bar(message: str | None = None,
                       progress: int | None = None,
                       active: bool | None = None):
+    if not SHOW_STATUS_BAR:
+        return
+
     if message is not None or progress is not None or active is not None:
         set_status(
             message if message is not None else st.session_state.get("ui_status_message", "Ready"),
@@ -587,6 +591,20 @@ def load_cleaned_data() -> pd.DataFrame | None:
                 except Exception:
                     pass
             return df
+    return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_merged_data() -> pd.DataFrame | None:
+    """Load pre-clean merged dataset if available (truth baseline for missingness)."""
+    candidates = [
+        DATA_DIR / "processed" / "all_waves_merged.csv",
+        ROOT / "data" / "processed" / "all_waves_merged.csv",
+        Path("data/processed/all_waves_merged.csv"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return pd.read_csv(p, low_memory=False)
     return None
 
 @st.cache_data(show_spinner=False)
@@ -666,7 +684,6 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("""
         <div style='text-align:center; padding: 0.45rem 0 0.2rem;'>
-            <div style='font-size:2rem;'>ET</div>
             <div style='font-weight:800; font-size:1.05rem;'
                         color:#F6C94E; line-height:1.2; margin-top:0.2rem;'>
                 Ethiopian Wealth<br>Predictor
@@ -711,7 +728,7 @@ def render_sidebar():
             <div style='background:rgba(200,16,46,0.1);border:1px solid #C8102E;
                         border-radius:8px;padding:0.55rem 0.7rem;font-size:0.72rem;'>
                 <div style='color:#FF6B7A;font-weight:700;'>Data Not Built</div>
-                <div style='color:#8B949E;'>Go to Home → Build Dataset</div>
+                <div style='color:#8B949E;'>Go to Home and Build Dataset</div>
             </div>""", unsafe_allow_html=True)
 
         # team card moved to About page to keep sidebar compact
@@ -727,7 +744,6 @@ def page_home():
     # Hero
     st.markdown("""
     <div class="hero">
-        <div class="eth-flag">ET</div>
         <div class="hero-badge">InSy3056 · Data Science Application</div>
         <div class="hero-title">Ethiopian Household<br>Wealth Prediction</div>
         <div class="hero-sub">
@@ -1218,18 +1234,19 @@ def page_preprocessing():
     sec_header("", "Data Preprocessing Audit")
 
     df = load_cleaned_data()
+    df_raw = load_merged_data()
     if df is None:
         warn_box("Dataset not built. Go to Home → Build Dataset first.")
         return
 
     info_box(
         "This page audits the 7-step missing-value pipeline and shows the "
-        "ColumnTransformer feature groups used in the sklearn preprocessing pipeline "
+        "ColumnTransformer feature groups used in the sklearn preprocessing pipeline."
 
     )
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "🧹 Cleaning Log", "🔍 Missing Strategy", "⚗️ Feature Engineering", "🏗 Pipeline Groups"
+        "Cleaning Log", "Missing Strategy", "Feature Engineering", "Pipeline Groups"
     ])
 
     with tab1:
@@ -1239,32 +1256,74 @@ def page_preprocessing():
                 set_status("Running cleaning pipeline…", 35, True)
                 render_status_bar()
                 cleaner  = DataCleaner()
-                df_clean = cleaner.fit_transform(df.copy())
+                input_df = df_raw.copy() if df_raw is not None else df.copy()
+                df_clean = cleaner.fit_transform(input_df)
             set_status("Cleaning complete", 100, False)
             render_status_bar()
-            st.success(f"✅ Cleaning complete: {df_clean.shape[0]:,} rows × {df_clean.shape[1]} cols")
+            st.success(f"Cleaning complete: {df_clean.shape[0]:,} rows x {df_clean.shape[1]} cols")
             log = cleaner.report()
             if not log.empty:
                 st.dataframe(log, use_container_width=True)
 
             # Before/after null comparison
             col1, col2 = st.columns(2)
-            col1.metric("Nulls Before", f"{df.isnull().sum().sum():,}")
+            before_label = "Nulls Before (Pre-clean)" if df_raw is not None else "Nulls Before"
+            col1.metric(before_label, f"{input_df.isnull().sum().sum():,}")
             col2.metric("Nulls After",  f"{df_clean.isnull().sum().sum():,}")
         except Exception as e:
+            set_status("Cleaning failed", 0, False)
+            render_status_bar()
             st.error(f"Could not run cleaner: {e}")
             df_clean = df.copy()
 
     with tab2:
         try:
             from missing_value_handler import MissingValueHandler
+
+            raw_df = df_raw
+            raw_name = "all_waves_merged.csv"
+
+            source_options = ["Post-cleaning dataset (used by app)"]
+            if raw_df is not None:
+                source_options = [
+                    "Pre-cleaning merged dataset (truth check)",
+                    "Post-cleaning dataset (used by app)",
+                ]
+
+            source = st.radio("Audit Source", options=source_options, horizontal=True)
+
+            if raw_df is not None:
+                pre_missing_cells = int(raw_df.isnull().sum().sum())
+                post_missing_cells = int(df.isnull().sum().sum())
+                removed_missing = max(pre_missing_cells - post_missing_cells, 0)
+
+                st.markdown("#### Missingness Truth Check")
+                t1, t2, t3 = st.columns(3)
+                t1.metric("Pre-cleaning missing cells", f"{pre_missing_cells:,}")
+                t2.metric("Post-cleaning missing cells", f"{post_missing_cells:,}")
+                t3.metric("Removed by cleaning", f"{removed_missing:,}")
+
+            audit_df = df
+            source_note = "Post-cleaning dataset"
+            if source == "Pre-cleaning merged dataset (truth check)":
+                if raw_df is None:
+                    st.warning(
+                        "Pre-cleaning merged dataset not found in data/processed/all_waves_merged.csv. "
+                        "Showing post-cleaning dataset instead."
+                    )
+                else:
+                    audit_df = raw_df
+                    source_note = f"Pre-cleaning merged dataset ({raw_name})"
+
+            st.caption(f"Now auditing: {source_note}")
+
             handler = MissingValueHandler()
             try:
-                strategy_df = handler.missing_report(df)
+                strategy_df = handler.missing_report(audit_df)
             except Exception:
                 # Fallback: compute missing-value summary directly if handler fails
-                miss = df.isnull().sum()
-                pct  = (miss / len(df) * 100).round(2)
+                miss = audit_df.isnull().sum()
+                pct  = (miss / len(audit_df) * 100).round(2)
                 strategy_df = (
                     pd.DataFrame({"feature": miss.index, "n_missing": miss.values, "pct_missing": pct.values})
                     .loc[lambda d: d["n_missing"] > 0]
@@ -1272,18 +1331,49 @@ def page_preprocessing():
                     .reset_index(drop=True)
                 )
 
+            total_missing_cells = int(audit_df.isnull().sum().sum())
+            rows_with_missing = int(audit_df.isnull().any(axis=1).sum())
+            cols_with_missing = int((audit_df.isnull().sum() > 0).sum())
+            total_cells = int(audit_df.shape[0] * audit_df.shape[1])
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Missing Cells", f"{total_missing_cells:,}")
+            m2.metric("Rows With Missing", f"{rows_with_missing:,}")
+            m3.metric("Columns With Missing", f"{cols_with_missing:,}")
+            m4.metric("Missing Rate", f"{(100 * total_missing_cells / max(total_cells, 1)):.2f}%")
+
             if strategy_df is None or strategy_df.empty:
-                st.success("✅ No missing values detected.")
+                st.success("No missing values detected.")
+                if source == "Post-cleaning dataset (used by app)":
+                    info_box(
+                        "This is expected after cleaning. Switch to 'Pre-cleaning merged dataset' "
+                        "to inspect the true raw missing-value pattern."
+                    )
             else:
-                st.markdown(f"**{len(strategy_df)} features with missing values:**")
-                st.dataframe(strategy_df, use_container_width=True, height=400)
+                if "recommended_strategy" in strategy_df.columns:
+                    strategy_df = strategy_df.rename(columns={
+                        "feature": "Feature",
+                        "n_missing": "Missing count",
+                        "pct_missing": "Missing %",
+                        "dtype": "Data type",
+                        "recommended_strategy": "Suggested handling",
+                    })
+                else:
+                    strategy_df = strategy_df.rename(columns={
+                        "feature": "Feature",
+                        "n_missing": "Missing count",
+                        "pct_missing": "Missing %",
+                    })
+
+                st.markdown(f"**{len(strategy_df)} features currently have missing values:**")
+                st.dataframe(strategy_df, use_container_width=True, height=420)
         except Exception as e:
             st.error(f"MissingValueHandler unavailable: {e}")
 
         st.markdown("#### W2 Column Gap Analysis")
         info_box(
             "Wave 2 (SPSS format) truncates variable names to 8 characters. "
-            "Gaps below are caused by name truncation — fixed via W2_COL_RENAME "
+            "Gaps below are caused by name truncation and fixed via W2_COL_RENAME "
             "in config.py and ROSTER_COLS[2] / LABOUR_COLS[2]."
         )
         w2_gaps = {
@@ -1325,7 +1415,7 @@ def page_preprocessing():
             set_status("Feature engineering complete", 100, False)
             render_status_bar()
 
-            st.success(f"✅ {len(fe.created_features_)} engineered features added")
+            st.success(f"{len(fe.created_features_)} engineered features added")
             st.dataframe(fe.summary(), use_container_width=True)
 
             # Distribution of one key feature
@@ -1439,7 +1529,7 @@ def page_modelling():
                     st.session_state["splits"]           = splits
                     st.session_state["wp"]               = wp
                     st.session_state["df_engineered"]    = df_e
-                    st.success(f"✅ Training complete — Best: **{wp.best_name_}**")
+                    st.success(f"Training complete. Best model: **{wp.best_name_}**")
 
                 except Exception as e:
                     st.error(f"Training failed: {e}")
@@ -1448,7 +1538,7 @@ def page_modelling():
 
     with tab2:
         if "model_results" not in st.session_state:
-            info_box("Train models first in the 🏋 Train tab.")
+            info_box("Train models first in the Train All Models tab.")
             return
 
         results = st.session_state["model_results"]
@@ -1457,33 +1547,62 @@ def page_modelling():
         st.markdown(f"**Best model: `{best}`**")
         st.dataframe(results.round(4), use_container_width=True)
 
-        # Visualise comparison
+        # Visualise comparison (robust to missing metric columns)
         apply_plt_style()
         fig, axes = plt.subplots(1, 2, figsize=(13, 4))
 
-        # F1 bar chart
-        sort_idx = results["weighted_f1"].argsort().values
-        sorted_r = results.iloc[sort_idx]
-        clrs     = ["#F6C94E" if m==best else "#1976D2"
-                    for m in sorted_r["model"]]
-        axes[0].barh(sorted_r["model"], sorted_r["weighted_f1"],
-                     color=clrs, edgecolor="none")
-        axes[0].set_xlabel("Weighted F1")
-        axes[0].set_title("Model Comparison — Weighted F1", fontweight="bold")
-        for i, v in enumerate(sorted_r["weighted_f1"]):
-            axes[0].text(v+0.002, i, f"{v:.4f}", va="center", fontsize=8)
+        # Choose preferred metric column (fallbacks if weighted_f1 missing)
+        preferred = ["weighted_f1", "f1_weighted", "cv_f1_mean", "accuracy"]
+        metric_col = None
+        for c in preferred:
+            if c in results.columns:
+                metric_col = c
+                break
+        if metric_col is None:
+            # As a last resort, pick the first numeric column after 'model'
+            numeric_cols = [c for c in results.columns if c != "model"]
+            if numeric_cols:
+                metric_col = numeric_cols[0]
+            else:
+                st.warning("No numeric metric found in model results to display.")
+                metric_col = "model"
 
-        # CV scores box-style as scatter
-        axes[1].errorbar(
-            range(len(results)), results["cv_f1_mean"],
-            yerr=results["cv_f1_std"], fmt="o", ms=8,
-            capsize=5, color="#52B788", ecolor="#30363D", lw=2,
-        )
-        axes[1].set_xticks(range(len(results)))
-        axes[1].set_xticklabels(results["model"], rotation=40, ha="right", fontsize=8)
-        axes[1].set_ylabel("CV Weighted F1 (mean ± std)")
-        axes[1].set_title("5-Fold CV Scores", fontweight="bold")
-        axes[1].grid(axis="y", alpha=0.3)
+        # F1 (or fallback) bar chart
+        try:
+            sort_idx = results[metric_col].argsort().values
+            sorted_r = results.iloc[sort_idx]
+        except Exception:
+            sorted_r = results.copy()
+
+        clrs = ["#F6C94E" if m == best else "#1976D2" for m in sorted_r.get("model", [])]
+        axes[0].barh(sorted_r.get("model", sorted_r.index), sorted_r.get(metric_col, 0.0),
+                     color=clrs, edgecolor="none")
+        axes[0].set_xlabel(metric_col.replace("_", " ").title())
+        axes[0].set_title(f"Model Comparison — {metric_col.replace('_', ' ').title()}", fontweight="bold")
+        for i, v in enumerate(sorted_r.get(metric_col, [])):
+            try:
+                axes[0].text(v + 0.002, i, f"{v:.4f}", va="center", fontsize=8)
+            except Exception:
+                pass
+
+        # CV scores (mean ± std) — fallbacks if columns absent
+        cv_mean = results.get("cv_f1_mean") or results.get("cv_score") or np.zeros(len(results))
+        cv_std  = results.get("cv_f1_std")  or results.get("cv_std")   or np.zeros(len(results))
+        try:
+            axes[1].errorbar(
+                range(len(results)), cv_mean,
+                yerr=cv_std, fmt="o", ms=8,
+                capsize=5, color="#52B788", ecolor="#30363D", lw=2,
+            )
+            axes[1].set_xticks(range(len(results)))
+            axes[1].set_xticklabels(results.get("model", results.index), rotation=40, ha="right", fontsize=8)
+            axes[1].set_ylabel("CV (mean ± std)")
+            axes[1].set_title("Cross-Validation Scores", fontweight="bold")
+            axes[1].grid(axis="y", alpha=0.3)
+        except Exception:
+            # If plotting CV fails, leave the axis blank and show a message
+            axes[1].axis("off")
+            st.warning("CV plot unavailable — missing CV metrics in results.")
 
         plt.tight_layout()
         st.pyplot(fig, use_container_width=True)
@@ -1507,14 +1626,57 @@ def page_modelling():
             except Exception:
                 pass
 
+        # Model selection & promotion
+        st.markdown("#### Model Selection")
+        try:
+            metric_choices = [c for c in results.columns if c not in ("model",)]
+            default_metric = "weighted_f1" if "weighted_f1" in metric_choices else (metric_choices[0] if metric_choices else None)
+            selected_metric = st.selectbox("Select metric to choose best model", metric_choices, index=metric_choices.index(default_metric) if default_metric in metric_choices else 0)
+            sort_desc = st.checkbox("Higher is better", value=True)
+            if st.button("Select Best Model by Metric", use_container_width=True):
+                try:
+                    ranked = results.sort_values(selected_metric, ascending=not sort_desc)
+                    winner = ranked.iloc[0]["model"]
+                    st.session_state["selected_model"] = winner
+                    st.success(f"Selected model: {winner} by {selected_metric}")
+                except Exception as e:
+                    st.error(f"Could not select best model: {e}")
+
+            if "selected_model" in st.session_state:
+                chosen = st.session_state["selected_model"]
+                st.markdown(f"**Chosen model:** `{chosen}`")
+                if st.button("Promote chosen model to production (save)", use_container_width=True):
+                    try:
+                        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+                        wp = st.session_state.get("wp")
+                        if wp and getattr(wp, "models_", None):
+                            # attempt to find model object by name and save
+                            model_obj = wp.models_.get(chosen) if isinstance(wp.models_, dict) else None
+                            if model_obj is None:
+                                # fallback: save entire WealthPredictor as production bundle
+                                joblib.dump(wp, MODEL_DIR / "prod_wealthpredictor.pkl")
+                            else:
+                                joblib.dump(model_obj, MODEL_DIR / f"prod_{chosen}.pkl")
+                        else:
+                            # fallback: save model_results as CSV
+                            results.to_csv(MODEL_DIR / "model_results.csv", index=False)
+                        st.success("Production model exported to models/")
+                    except Exception as e:
+                        st.error(f"Export failed: {e}")
+        except Exception:
+            st.info("Model selection unavailable — ensure training results include numeric metrics.")
+
     with tab3:
-        if "wp" not in st.session_state:
+        wp = st.session_state.get("wp")
+        dfe = st.session_state.get("df_engineered")
+        feat_names = st.session_state.get("splits", {}).get("feature_names", None)
+
+        if wp is None:
             info_box("Train models first to access per-region results.")
             return
-
-        wp  = st.session_state["wp"]
-        dfe = st.session_state["df_engineered"]
-        feat_names = st.session_state["splits"]["feature_names"]
+        if dfe is None or feat_names is None:
+            info_box("Trained pipeline artifacts not found in session. Re-run training or reload saved artifacts.")
+            return
 
         if st.button("Train Per-Region Models", use_container_width=True):
             with st.spinner("Training region-specific models…"):
@@ -1526,7 +1688,7 @@ def page_modelling():
                     st.session_state["ranking"] = ranking
                     set_status("Regional model training complete", 100, False)
                     render_status_bar()
-                    st.success(f"✅ {len(reg_df)} region models trained")
+                    st.success(f"{len(reg_df)} region models trained")
                 except Exception as e:
                     st.error(f"Region modelling failed: {e}")
                 if "ranking" in st.session_state:
@@ -1771,7 +1933,7 @@ def page_predict():
         wave = year_selected
         
         if "2027" in year_selected:
-            st.info("📊 **2027(Projection):** Using the latest trained model (2021–22 data). Actual 2027 data not yet available.")
+            st.info("2027 projection uses the latest trained model (2021-22 data). Actual 2027 survey data is not yet available.")
 
 
         st.markdown("#### Household Demographics")
@@ -2207,6 +2369,72 @@ def page_about():
         ("Model evaluation",   "Statistical testing",   "Paired t-test and Wilcoxon signed-rank comparison across models"),
     ], columns=["Area","Method/Tool","Details"])
     st.dataframe(methods, use_container_width=True, hide_index=True)
+
+    sec_header("", "Final Submission Explanation")
+    st.markdown("""
+    <div class="info-box" style="margin-bottom:0.9rem;">
+    This section provides a clear script for final submission. It explains what each
+    page demonstrates, what evidence to show, and how each module supports the full
+    CRISP-DM pipeline.
+    </div>
+    """, unsafe_allow_html=True)
+
+    submission_pages = pd.DataFrame([
+        ("Home", "Problem statement, target variable, and project scope", "Show project overview, dataset size, and CRISP-DM stages"),
+        ("Data Explorer", "Data understanding and quality checks", "Show preview, summary statistics, and missing-value view by wave"),
+        ("EDA", "Evidence-based feature relevance", "Show key distributions, group comparisons, and trend plots"),
+        ("Preprocessing", "Cleaning and imputation audit", "Show cleaning log, missing strategy table, and before vs after null counts"),
+        ("Modelling", "Model development and comparison", "Show training setup, best model metrics, and region-level model results"),
+        ("Regional Wealth Map", "Regional interpretation", "Show wealth ranking output and pairwise region comparison"),
+        ("Predict Household", "Deployment use case", "Show single-record input, predicted quintile, and probability distribution"),
+        ("About", "Methods and ethics", "Explain technical contributions, ethical limits, and intended usage"),
+    ], columns=["Page", "What to Explain", "Evidence to Show"])
+    st.dataframe(submission_pages, use_container_width=True, hide_index=True)
+
+    submission_modules = pd.DataFrame([
+        ("src/sav_reader.py", "Reads W2 SPSS files and resolves truncated fields"),
+        ("src/data_loader.py", "Builds the merged cross-wave dataset"),
+        ("src/missing_value_handler.py", "Applies survey-aware missing-value handling"),
+        ("src/data_cleaner.py", "Runs full cleaning workflow and logs outcomes"),
+        ("src/feature_enginner.py", "Creates engineered predictors for wealth modeling"),
+        ("src/data_preprocesor.py", "Builds preprocessing pipelines and train/validation/test splits"),
+        ("src/modeling.py", "Trains, evaluates, compares, and saves models"),
+        ("app/app.py", "Presents end-to-end analysis and prediction interface"),
+    ], columns=["Module", "Role in Final Submission"])
+    st.dataframe(submission_modules, use_container_width=True, hide_index=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE: EXPORT
+# ══════════════════════════════════════════════════════════════════════════════
+
+def page_export():
+    sec_header("", "Export — Model & Report")
+
+    st.markdown(
+        "This page lets you export the selected production model and a short evaluation report."
+    )
+
+    if not MODEL_DIR.exists():
+        warn_box("No models directory found. Train models first to enable exports.")
+        return
+
+    # List available production artifacts
+    prod_files = sorted([p.name for p in MODEL_DIR.glob("prod_*.pkl")])
+    prod_files += sorted([p.name for p in MODEL_DIR.glob("*.csv")])
+
+    if not prod_files:
+        info_box("No production artifacts found. Promote a model from Modelling → Results first.")
+        return
+
+    choice = st.selectbox("Choose artifact to download", prod_files)
+    if choice:
+        fp = MODEL_DIR / choice
+        try:
+            with open(fp, "rb") as f:
+                st.download_button("Download", f, file_name=choice, use_container_width=True)
+        except Exception as e:
+            st.error(f"Could not read file: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
