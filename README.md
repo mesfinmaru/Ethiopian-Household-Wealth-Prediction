@@ -1,4 +1,4 @@
-# Ethiopian Household Wealth Prediction
+# Ethiopian Household Wealth Prediction 
 
 Streamlit application and machine learning pipeline for predicting Ethiopian household wealth quintiles from five waves of World Bank LSMS-ISA / ESS survey data.
 
