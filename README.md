@@ -8,7 +8,7 @@ This project builds a leakage-free classification system that predicts `cons_qui
 
 The application is designed for academic analysis and policy-oriented exploration rather than operational targeting or allocation decisions.
 
-## What The App Does
+## What The App Does 
 
 The Streamlit interface in `app/app.py` provides the full workflow in one place:
 
