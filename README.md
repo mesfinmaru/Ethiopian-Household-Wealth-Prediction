@@ -60,11 +60,11 @@ The modelling layer also supports:
 
 The repository uses survey data from the World Bank LSMS-ISA / Ethiopian Socioeconomic Survey waves:
 
-- W1: 2011–12
-- W2: 2013–14
-- W3: 2015–16
-- W4: 2018–19
-- W5: 2021–22
+- W1: 2011–12 https://microdata.worldbank.org/catalog/2053/
+- W2: 2013–14 https://microdata.worldbank.org/catalog/2247/
+- W3: 2015–16 https://microdata.worldbank.org/catalog/2783/
+- W4: 2018–19 https://microdata.worldbank.org/catalog/3823/
+- W5: 2021–22 https://microdata.worldbank.org/catalog/6161/
 
 Raw files are stored under `data/raw/`, and the processed combined dataset is written to `data/processed/`.
 
