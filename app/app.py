@@ -1021,7 +1021,7 @@ def page_data_explorer():
                     import pandas as _pd
                     if "model_results" not in st.session_state:
                         st.session_state["model_results"] = _pd.DataFrame([
-                            {"model": st.session_state["best_name"], "accuracy": 0.0}
+                            {"model": st.session_state.get("best_name", "saved_model"), "accuracy": 0.0}
                         ])
             except Exception:
                 pass
@@ -1674,8 +1674,13 @@ def page_modelling():
             info_box("Train models first in the Train All Models tab.")
             return
 
-        results = st.session_state["model_results"]
-        best    = st.session_state["best_name"]
+        results = st.session_state.get("model_results")
+        best    = st.session_state.get("best_name")
+        if not best:
+            try:
+                best = str(results.iloc[0]["model"])
+            except Exception:
+                best = "saved_model"
 
         st.markdown(f"**Best model: `{best}`**")
         st.dataframe(results.round(4), use_container_width=True)
