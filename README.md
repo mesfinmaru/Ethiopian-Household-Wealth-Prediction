@@ -66,7 +66,7 @@ The repository uses survey data from the World Bank LSMS-ISA / Ethiopian Socioec
 - W4: 2018–19
 - W5: 2021–22
 
-Raw files are stored under `data/raw/`, and the processed combined dataset is written to `data/processed/all_waves_cleaned.csv`.
+Raw files are stored under `data/raw/`, and the processed combined dataset is written to `data/processed/`.
 
 ## Project Structure
 
@@ -199,7 +199,7 @@ The following captures show the main pages of the app. All images are stored in 
 - The project avoids leakage by excluding consumption aggregate columns from features.
 - Wave 2 uses a custom SPSS decoder to handle `.sav` files without external parsing dependencies.
 - Saved artifacts are written to `models/` and processed outputs to `data/processed/`.
-- A machine-readable manifest in `models/model_info.json` summarizes saved artifacts.
+- A machine-readable manifest in `models/model_metadata.json` summarizes saved artifacts.
 
 ## Dependencies
 
