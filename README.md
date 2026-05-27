@@ -76,6 +76,7 @@ app/
 data/
     raw/
     processed/
+docs/    
 models/
 notebooks/
 reports/
@@ -88,13 +89,12 @@ src/
     missing_value_handler.py
     modeling.py
     sav_reader.py
+test/    
 requirements.txt
 README.md
 ```
 
 ## Setup
-
-Run the following from the project root (`DSA Project`).
 
 ### 1. Create a virtual environment
 
@@ -123,13 +123,13 @@ pip install -r requirements.txt
 
 ### 4. Confirm raw survey data exists
 
-Make sure `data/raw/` contains all five survey-wave folders and section files before building/training.
+Make sure `data/raw/` contains all five survey-wave folders and section files before building or training.
 
 ## Run
 
 ### Run the Streamlit app
 
-Use the venv Python explicitly (works even if `streamlit` is not on PATH):
+Use the venv Python explicitly:
 
 ```powershell
 .venv\Scripts\python.exe -m streamlit run app/app.py
@@ -139,7 +139,7 @@ Then open:
 
 - `http://localhost:8501`
 
-If the combined dataset is missing, open the Home page and click **Build Dataset** to create `data/processed/all_waves_clean.csv`.
+If the combined dataset is missing, open the Home page and click **Build Dataset** to create `data/processed/all_waves_cleaned.csv`.
 
 ### Run tests
 
@@ -156,54 +156,65 @@ If the combined dataset is missing, open the Home page and click **Build Dataset
 5. Explore regional wealth patterns and compare regions.
 6. Use the prediction form for a single-household estimate.
 
-## Final Submission Guide
+## Screenshots
 
-Use this structure during your final demo or report so each stage is clearly explained.
+The following captures show the main pages of the app. All images are stored in `docs/screenshots/`.
 
-### What to explain by app page
+### Home
 
-1. Home: problem statement, target variable, dataset size, and CRISP-DM stages.
-2. Data Explorer: data quality checks, missingness by wave, and regional coverage.
-3. EDA: key univariate and bivariate patterns, and feature relevance.
-4. Preprocessing: cleaning log, missing-value handling strategy, and before/after null counts.
-5. Modelling: training setup, model comparison metrics, and best-model selection.
-6. Regional Wealth Map: region-level ranking and side-by-side regional differences.
-7. Predict Household: deployment flow with single-record input and class probabilities.
-8. About: methods summary, data source attribution, and ethical limitations.
+![Home page](docs/screenshots/home.png)
 
-### What to explain by source module
+### About
 
-1. src/sav_reader.py: reads W2 SPSS files and standardizes truncated names.
-2. src/data_loader.py: loads and merges all waves into one analysis dataset.
-3. src/missing_value_handler.py: applies survey-aware missing-value handling.
-4. src/data_cleaner.py: runs full cleaning, outlier capping, and data quality controls.
-5. src/feature_enginner.py: creates engineered features used by the models.
-6. src/data_preprocesor.py: builds preprocessing pipelines and split strategy.
-7. src/modeling.py: trains, evaluates, compares, and persists models.
-8. app/app.py: presents the end-to-end workflow and prediction interface.
+![About page](docs/screenshots/about.png)
+
+### Data Explorer
+
+![Data explorer](docs/screenshots/data_explorer.png)
+
+### EDA
+
+![EDA page](docs/screenshots/eda.png)
+
+### Preprocessing Audit
+
+![Preprocessing audit](docs/screenshots/preprocessing.png)
+
+### Modelling
+
+![Modelling page](docs/screenshots/modeling.png)
+
+### Prediction
+
+![Prediction step 1](docs/screenshots/prediction_01.png)
+
+![Prediction step 2](docs/screenshots/prediction_02.png)
+
+### Regional Wealth Map
+
+![Regional wealth map](docs/screenshots/regional_wealth_map.png)
 
 ## Notes
 
 - The project avoids leakage by excluding consumption aggregate columns from features.
 - Wave 2 uses a custom SPSS decoder to handle `.sav` files without external parsing dependencies.
 - Saved artifacts are written to `models/` and processed outputs to `data/processed/`.
-
+- A machine-readable manifest in `models/model_info.json` summarizes saved artifacts.
 
 ## Dependencies
 
 The project is built with Python and the scientific stack, including Streamlit, pandas, NumPy, scikit-learn, SciPy, Matplotlib, Seaborn, Joblib, XGBoost, LightGBM, and pyreadstat.
 
+## Deployment
+
+Public deployment: https://ethiowealthpredictor.streamlit.app/
+
+You can also run the app locally using the instructions above.
+
 ## License And Attribution
 
 This project uses World Bank LSMS-ISA / ESS survey data. Please follow the relevant data access and citation requirements from the source provider.
 
-
-## Deployment
-
-The web app is deployed at: https://ethiowealthpredictor.streamlit.app/
-
 ## Last Updated
 
-2026-05-16
-
-
+2026-05-27

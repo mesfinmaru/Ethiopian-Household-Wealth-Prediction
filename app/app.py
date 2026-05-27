@@ -631,45 +631,148 @@ def load_models() -> dict:
     for d in dirs:
         if d.exists():
             for pkl in sorted(d.glob("*.pkl")):
+                if pkl.name == "model_results.pkl":
+                    continue
                 try:
                     found[pkl.stem] = joblib.load(pkl)
                 except Exception:
                     pass
     return found
 
-def run_pipeline_cached():
-    """Run the full 5-wave data pipeline with a progress indicator."""
-    progress = st.progress(0, text="Loading Wave 1 (2011-12)…")
-    try:
-        set_status("Loading Wave 1 (2011-12)…", 5, True)
+
+def hydrate_saved_artifacts() -> None:
+    """Restore saved models and preprocessing artifacts into session state.
+
+    This lets the UI survive a browser refresh without requiring the user to
+    retrain models every time. If artifacts already exist in session state, this
+    function leaves them untouched.
+    """
+    if "model_results" not in st.session_state:
+        results_path = MODEL_DIR / "model_results.pkl"
+        if results_path.exists():
+            try:
+                st.session_state["model_results"] = joblib.load(results_path)
+            except Exception:
+                pass
+
+    if "ranking" not in st.session_state:
+        try:
+            from src.config import RANKING_CSV
+        except Exception:
+            from config import RANKING_CSV
+
+        if RANKING_CSV.exists():
+            try:
+                st.session_state["ranking"] = pd.read_csv(RANKING_CSV)
+            except Exception:
+                pass
+
+    if "dp_pipeline" not in st.session_state or "splits" not in st.session_state:
+        try:
+            from data_preprocesor import DataPreprocessor
+        except Exception:
+            from src.data_preprocesor import DataPreprocessor
+
+        try:
+            dp = DataPreprocessor()
+            dp.load(str(MODEL_DIR / "preprocessor.pkl"))
+            st.session_state["dp_pipeline"] = dp.pipeline_
+            st.session_state["preprocessor"] = (dp.pipeline_, dp.label_encoder_, dp.feature_names_)
+            st.session_state["saved_feature_names"] = dp.feature_names_
+        except Exception:
+            pass
+
+    if "wp" not in st.session_state:
+        try:
+            from modeling import WealthPredictor
+        except Exception:
+            from src.modeling import WealthPredictor
+
+        try:
+            wp = WealthPredictor()
+            wp.load(str(MODEL_DIR))
+            results = st.session_state.get("model_results")
+            if isinstance(results, pd.DataFrame) and not results.empty:
+                try:
+                    wp.best_name_ = str(results.iloc[0].get("model", "best_model"))
+                except Exception:
+                    wp.best_name_ = "best_model"
+            else:
+                wp.best_name_ = "best_model"
+
+            if getattr(wp, "best_model_", None) is not None:
+                st.session_state["wp"] = wp
+                st.session_state["best_name"] = wp.best_name_
+        except Exception:
+            pass
+
+    if "selected_model" not in st.session_state and "model_results" in st.session_state:
+        try:
+            results = st.session_state["model_results"]
+            if isinstance(results, pd.DataFrame) and not results.empty and "model" in results.columns:
+                st.session_state["selected_model"] = str(results.iloc[0]["model"])
+        except Exception:
+            pass
+
+    if "ranking" not in st.session_state and "wp" in st.session_state:
+        try:
+            wp = st.session_state["wp"]
+            if getattr(wp, "region_models_", None):
+                rows = []
+                for region, info in wp.region_models_.items():
+                    rows.append({
+                        "region": region,
+                        "n_households": info.get("n_total", 0),
+                        "accuracy": round(float(info.get("accuracy", 0.0)), 4),
+                        "weighted_f1": round(float(info.get("weighted_f1", 0.0)), 4),
+                        "mean_pred_quintile": round(float(info.get("mean_pred_q", 0.0)), 3),
+                    })
+                if rows:
+                    st.session_state["ranking"] = pd.DataFrame(rows).sort_values(
+                        "mean_pred_quintile", ascending=False
+                    ).reset_index(drop=True)
+        except Exception:
+            pass
+
+def run_pipeline_cached(progress_bar=None):
+    """Run the full 5-wave data pipeline with a visible 1–100 progress bar."""
+
+    def update_progress(pct: int, text: str):
+        pct = int(max(1, min(100, pct)))
+        if progress_bar is not None:
+            progress_bar.progress(pct, text=text)
+        set_status(text, pct, True)
         render_status_bar()
+
+    try:
+        update_progress(1, "Initializing build…")
         from data_loader import build_wave
         from data_cleaner import DataCleaner
         frames = []
-        for i, w in enumerate([1, 2, 3, 4, 5], 1):
-            progress.progress(i * 18, text=f"Loading Wave {w} ({WAVE_META[w]['year']})…")
-            set_status(f"Loading Wave {w} ({WAVE_META[w]['year']})…", i * 18, True)
-            render_status_bar()
+        waves = [1, 2, 3, 4, 5]
+        for i, w in enumerate(waves, 1):
+            wave_start = 5 + int(((i - 1) / len(waves)) * 60)
+            wave_end = 5 + int((i / len(waves)) * 60)
+            update_progress(wave_start, f"Loading Wave {w} ({WAVE_META[w]['year']})…")
             f = build_wave(w, verbose=False)
             if not f.empty:
                 frames.append(f)
+            update_progress(wave_end, f"Completed Wave {w} ({WAVE_META[w]['year']})")
             time.sleep(0.1)
         import pandas as pd_inner
+        update_progress(72, "Combining wave data…")
         df = pd_inner.concat(frames, ignore_index=True, sort=False)
+        update_progress(80, "Running cleaning pipeline…")
         df = DataCleaner().fit_transform(df)
-        progress.progress(95, text="Saving processed data…")
-        set_status("Saving processed data…", 95, True)
-        render_status_bar()
+        update_progress(92, "Saving processed data…")
         (DATA_DIR / "processed").mkdir(parents=True, exist_ok=True)
         df.to_csv(DATA_DIR / "processed" / CLEANED_CSV.name, index=False)
-        progress.progress(100, text="Done!")
+        update_progress(100, "Dataset build complete")
         set_status("Dataset build complete", 100, False)
         render_status_bar()
         time.sleep(0.4)
-        progress.empty()
         return df
     except Exception as e:
-        progress.empty()
         set_status("Dataset build failed", 0, False)
         render_status_bar()
         st.error(f"Pipeline error: {e}")
@@ -825,7 +928,7 @@ def page_home():
              "group medians, KNN). IQR outlier capping. Feature engineering (7 groups)."),
             ("4", "Modelling",
              "10 classifiers (LR, DT, RF, KNN, NB, SVM, AdaBoost, GBT, XGBoost, LightGBM). "
-             "Per-region models + GridSearchCV tuning. Unsupervised: K-Means, PCA, t-SNE."),
+             "Per-region models + GridSearchCV tuning."),
             ("5", "Evaluation",
              "Stratified 5-fold CV. Accuracy, weighted F1, macro F1, ROC-AUC. "
              "Learning curves, validation curves. Paired t-test for significance."),
@@ -851,12 +954,15 @@ def page_home():
     with col1:
         if st.button("Build Dataset (All 5 Waves)", use_container_width=True):
             with st.spinner("Building multi-wave dataset…"):
-                df = run_pipeline_cached()
+                build_progress = st.progress(1, text="Starting dataset build…")
+                df = run_pipeline_cached(build_progress)
             if df is not None:
+                build_progress.progress(100, text="Dataset build complete")
                 st.success(f"Dataset built: {df.shape[0]:,} households × {df.shape[1]} columns")
                 st.cache_data.clear()
                 st.rerun()
             else:
+                build_progress.progress(0, text="Dataset build failed")
                 st.error("Build failed — check that raw data files are in data/raw/")
     with col2:
         cleaned_path = DATA_DIR / "processed" / "all_waves_clean.csv"
@@ -1473,8 +1579,10 @@ def page_modelling():
         warn_box("Dataset not built. Go to Home → Build Dataset first.")
         return
 
+    saved_model_ready = (MODEL_DIR / "best_model.pkl").exists() or (MODEL_DIR / "model_results.pkl").exists()
+
     info_box(
-        "Train and compare all 10 classifiers. "
+        "Train and compare classifiers. "
         "Results include accuracy, weighted F1, macro F1, and 5-fold CV scores. "
         "Per-region models are trained separately for regional wealth ranking."
     )
@@ -1487,10 +1595,21 @@ def page_modelling():
         test_size  = c1.slider("Test set size (%)", 10, 30, 20) / 100
         val_size   = c2.slider("Validation set size (%)", 10, 25, 15) / 100
         cv_folds   = c3.selectbox("CV folds", [3, 5, 10], index=1)
+        train_button_label = "Retrain All Models (Classifiers)" if saved_model_ready else "Train All Models (Classifiers)"
 
-        if st.button("Train All Models (Classifiers)", use_container_width=True):
-            with st.spinner("Running full pipeline and training models…"):
+        if saved_model_ready:
+            info_box("Saved model artifacts were detected. Use the retrain button only if you want to rebuild them.")
+
+        if st.button(train_button_label, use_container_width=True):
+            with st.spinner("Running full pipeline and training models, this may take couple of minutes..."):
                 try:
+                    train_progress = st.progress(1, text="Starting model training…")
+
+                    def update_train_progress(pct: int, text: str):
+                        train_progress.progress(int(max(1, min(100, pct))), text=text)
+                        set_status(text, pct, True)
+                        render_status_bar()
+
                     set_status("Training all classifiers…", 45, True)
                     render_status_bar()
                     from data_cleaner      import DataCleaner
@@ -1510,8 +1629,17 @@ def page_modelling():
                     X_tr, X_te = splits["X_train"], splits["X_test"]
                     y_tr, y_te = splits["y_train"], splits["y_test"]
 
-                    results = wp.train_evaluate(X_tr, y_tr, X_te, y_te,
-                                                cv_folds=int(cv_folds))
+                    try:
+                        results = wp.train_evaluate(
+                            X_tr, y_tr, X_te, y_te,
+                            cv_folds=int(cv_folds),
+                            progress_callback=update_train_progress,
+                        )
+                    except TypeError:
+                        # backward compatibility for a running Streamlit session that still has
+                        # an older imported WealthPredictor object without the callback argument
+                        results = wp.train_evaluate(X_tr, y_tr, X_te, y_te,
+                                                    cv_folds=int(cv_folds))
                     dp.save(str(MODEL_DIR / "preprocessor.pkl"))
                     wp.save(str(MODEL_DIR))
                     # persist training results so metrics reappear after reload
@@ -1521,6 +1649,7 @@ def page_modelling():
                     except Exception:
                         pass
 
+                    train_progress.progress(100, text="Model training complete")
                     set_status("Model training complete", 100, False)
                     render_status_bar()
 
@@ -1532,6 +1661,10 @@ def page_modelling():
                     st.success(f"Training complete. Best model: **{wp.best_name_}**")
 
                 except Exception as e:
+                    try:
+                        train_progress.progress(0, text="Model training failed")
+                    except Exception:
+                        pass
                     st.error(f"Training failed: {e}")
                     import traceback
                     st.code(traceback.format_exc())
@@ -1586,8 +1719,21 @@ def page_modelling():
                 pass
 
         # CV scores (mean ± std) — fallbacks if columns absent
-        cv_mean = results.get("cv_f1_mean") or results.get("cv_score") or np.zeros(len(results))
-        cv_std  = results.get("cv_f1_std")  or results.get("cv_std")   or np.zeros(len(results))
+        cv_mean = None
+        for c in ("cv_f1_mean", "cv_score"):
+            if c in results.columns:
+                cv_mean = results[c].values
+                break
+        if cv_mean is None:
+            cv_mean = np.zeros(len(results))
+
+        cv_std = None
+        for c in ("cv_f1_std", "cv_std"):
+            if c in results.columns:
+                cv_std = results[c].values
+                break
+        if cv_std is None:
+            cv_std = np.zeros(len(results))
         try:
             axes[1].errorbar(
                 range(len(results)), cv_mean,
@@ -1658,8 +1804,8 @@ def page_modelling():
                             else:
                                 joblib.dump(model_obj, MODEL_DIR / f"prod_{chosen}.pkl")
                         else:
-                            # fallback: save model_results as CSV
-                            results.to_csv(MODEL_DIR / "model_results.csv", index=False)
+                            # fallback: save the production bundle only when a model object is not available
+                            joblib.dump(wp, MODEL_DIR / "prod_wealthpredictor.pkl")
                         st.success("Production model exported to models/")
                     except Exception as e:
                         st.error(f"Export failed: {e}")
@@ -1670,26 +1816,53 @@ def page_modelling():
         wp = st.session_state.get("wp")
         dfe = st.session_state.get("df_engineered")
         feat_names = st.session_state.get("splits", {}).get("feature_names", None)
+        region_stats = st.session_state.get("ranking")
 
         if wp is None:
-            info_box("Train models first to access per-region results.")
-            return
-        if dfe is None or feat_names is None:
-            info_box("Trained pipeline artifacts not found in session. Re-run training or reload saved artifacts.")
+            info_box("Saved models were not loaded. Train models first or ensure `models/best_model.pkl` exists.")
             return
 
-        if st.button("Train Per-Region Models", use_container_width=True):
+        if isinstance(region_stats, pd.DataFrame) and not region_stats.empty:
+            st.markdown("#### Saved Per-Region Models")
+            display_cols = [c for c in ["rank", "region", "n_households", "accuracy", "weighted_f1", "mean_pred_quintile"] if c in region_stats.columns]
+            st.dataframe(region_stats[display_cols], use_container_width=True)
+        else:
+            info_box("No saved regional ranking found. Train the regional models once to persist the ranking table.")
+
+        if dfe is None or feat_names is None:
+            info_box("The engineered dataset is not in session, so retraining regional models is disabled until the dataset is rebuilt.")
+            return
+
+        region_button_label = "Retrain Per-Region Models" if isinstance(region_stats, pd.DataFrame) and not region_stats.empty else "Train Per-Region Models"
+
+        if st.button(region_button_label, use_container_width=True):
             with st.spinner("Training region-specific models…"):
                 try:
+                    region_progress = st.progress(1, text="Starting regional training…")
+
+                    def update_region_progress(pct: int, text: str):
+                        region_progress.progress(int(max(1, min(100, pct))), text=text)
+                        set_status(text, pct, True)
+                        render_status_bar()
+
                     set_status("Training region-specific models…", 55, True)
                     render_status_bar()
-                    reg_df  = wp.train_per_region(dfe, feat_names, test_size=0.20)
+                    try:
+                        reg_df  = wp.train_per_region(dfe, feat_names, test_size=0.20,
+                                                      progress_callback=update_region_progress)
+                    except TypeError:
+                        reg_df  = wp.train_per_region(dfe, feat_names, test_size=0.20)
                     ranking = wp.regional_ranking(reg_df)
                     st.session_state["ranking"] = ranking
+                    region_progress.progress(100, text="Regional model training complete")
                     set_status("Regional model training complete", 100, False)
                     render_status_bar()
                     st.success(f"{len(reg_df)} region models trained")
                 except Exception as e:
+                    try:
+                        region_progress.progress(0, text="Regional model training failed")
+                    except Exception:
+                        pass
                     st.error(f"Region modelling failed: {e}")
                 if "ranking" in st.session_state:
                     st.dataframe(st.session_state["ranking"], use_container_width=True)
@@ -1750,7 +1923,7 @@ def page_regional_map():
 
     region_stats = (
         region_stats
-        .round(3).reset_index()
+        .round(3)
         .sort_values("mean_quintile", ascending=False)
         .reset_index(drop=True)
     )
@@ -1917,12 +2090,12 @@ def page_predict():
         settlement = c2.selectbox("Settlement", ["Rural","Urban","Small town","Large town"])
         
         # Allow selection of survey year
-        year_options = ["2021–22 (W5, Latest)", "2018–19 (W4)", "2015–16 (W3)", "2013–14 (W2)", "2011–12 (W1)", "2027(Projection)"]
+        year_options = ["2021–22 (W5)", "2018–19 (W4)", "2015–16 (W3)", "2013–14 (W2)", "2011–12 (W1)", "2027(Projection)"]
         year_selected = c3.selectbox("Survey Year", year_options, index=5)
         
         # Map year to wave number
         year_to_wave = {
-            "2021–22 (W5, Latest)": 5,
+            "2021–22 (W5)": 5,
             "2018–19 (W4)": 4,
             "2015–16 (W3)": 3,
             "2013–14 (W2)": 2,
@@ -1933,7 +2106,7 @@ def page_predict():
         wave = year_selected
         
         if "2027" in year_selected:
-            st.info("2027 projection uses the latest trained model (2021-22 data). Actual 2027 survey data is not yet available.")
+            st.info("2027 projection uses the latest trained model. Actual 2027 survey data is not yet available.")
 
 
         st.markdown("#### Household Demographics")
@@ -2279,14 +2452,12 @@ def page_about():
             literature (housing index, asset score, dependency, vulnerability)</li>
         <li><strong>Per-region models</strong>: 11 region-specific classifiers for
             regional wealth ranking and pairwise comparison</li>
-        <li><strong>Unsupervised analysis</strong>: K-Means, hierarchical clustering,
-            PCA and t-SNE projections</li>
         </ul>
 
         <h4 style="color:#E6EDF3;margin-top:1rem;">Data Source</h4>
         World Bank LSMS-ISA / Ethiopian Socioeconomic Survey (ESS)<br>
         <code style="color:#52B788;">https://microdata.worldbank.org/catalog/2053</code>
-        <br>License: World Bank Open Data (CC BY 4.0)
+        <br>License: World Bank Open Data 
         </div>
         """, unsafe_allow_html=True)
 
@@ -2312,8 +2483,7 @@ def page_about():
         <div class="warn-box" style="margin-top:0.8rem;">
         <strong>Conflict-affected data (W5)</strong>: Wave 5 (2021-22) was collected
         during the Tigray conflict. Tigray region data may be incomplete or
-        unrepresentative. The model includes an <code>is_tigray_conflict</code>
-        flag to capture this structural break.
+        unrepresentative. Analyses involving W5 should consider potential biases and data quality issues.
         </div>
 
         <div class="info-box" style="margin-top:0.8rem;">
@@ -2360,48 +2530,13 @@ def page_about():
         ("Data preparation",   "DataPreprocessor",      "ColumnTransformer pipeline with stratified splits, one-hot encoding, ordinal encoding and scaling"),
         ("Exploratory analysis","Univariate analysis",   "Distribution summaries, histograms, box plots, density plots and frequency tables"),
         ("Exploratory analysis","Bivariate analysis",    "Quintile comparison plots, Kruskal-Wallis, Chi-square and Mann-Whitney U testing"),
-        ("Exploratory analysis","Multivariate analysis", "Correlation analysis, region-settlement heatmaps and PCA-based structure review"),
+        ("Exploratory analysis","Multivariate analysis", "Correlation analysis and region-settlement heatmaps"),
         ("Supervised learning", "Classification pipeline","Logistic Regression, Decision Tree, Random Forest, KNN, Naive Bayes, SVM, AdaBoost, Gradient Boosting, XGBoost and LightGBM"),
-        ("Supervised learning", "Regression pipeline",    "Ordinal prediction metrics including MAE, RMSE and R² for wealth quintile estimation"),
-        ("Unsupervised learning","Clustering analyzer",   "K-Means with elbow and silhouette support, hierarchical clustering and DBSCAN"),
-        ("Unsupervised learning","Dimensionality reduction","PCA scree analysis, t-SNE projection and LDA-based class separation"),
         ("Model evaluation",   "Evaluator",             "Stratified K-Fold validation, learning curves, validation curves and GridSearchCV"),
         ("Model evaluation",   "Statistical testing",   "Paired t-test and Wilcoxon signed-rank comparison across models"),
     ], columns=["Area","Method/Tool","Details"])
     st.dataframe(methods, use_container_width=True, hide_index=True)
 
-    sec_header("", "Final Submission Explanation")
-    st.markdown("""
-    <div class="info-box" style="margin-bottom:0.9rem;">
-    This section provides a clear script for final submission. It explains what each
-    page demonstrates, what evidence to show, and how each module supports the full
-    CRISP-DM pipeline.
-    </div>
-    """, unsafe_allow_html=True)
-
-    submission_pages = pd.DataFrame([
-        ("Home", "Problem statement, target variable, and project scope", "Show project overview, dataset size, and CRISP-DM stages"),
-        ("Data Explorer", "Data understanding and quality checks", "Show preview, summary statistics, and missing-value view by wave"),
-        ("EDA", "Evidence-based feature relevance", "Show key distributions, group comparisons, and trend plots"),
-        ("Preprocessing", "Cleaning and imputation audit", "Show cleaning log, missing strategy table, and before vs after null counts"),
-        ("Modelling", "Model development and comparison", "Show training setup, best model metrics, and region-level model results"),
-        ("Regional Wealth Map", "Regional interpretation", "Show wealth ranking output and pairwise region comparison"),
-        ("Predict Household", "Deployment use case", "Show single-record input, predicted quintile, and probability distribution"),
-        ("About", "Methods and ethics", "Explain technical contributions, ethical limits, and intended usage"),
-    ], columns=["Page", "What to Explain", "Evidence to Show"])
-    st.dataframe(submission_pages, use_container_width=True, hide_index=True)
-
-    submission_modules = pd.DataFrame([
-        ("src/sav_reader.py", "Reads W2 SPSS files and resolves truncated fields"),
-        ("src/data_loader.py", "Builds the merged cross-wave dataset"),
-        ("src/missing_value_handler.py", "Applies survey-aware missing-value handling"),
-        ("src/data_cleaner.py", "Runs full cleaning workflow and logs outcomes"),
-        ("src/feature_enginner.py", "Creates engineered predictors for wealth modeling"),
-        ("src/data_preprocesor.py", "Builds preprocessing pipelines and train/validation/test splits"),
-        ("src/modeling.py", "Trains, evaluates, compares, and saves models"),
-        ("app/app.py", "Presents end-to-end analysis and prediction interface"),
-    ], columns=["Module", "Role in Final Submission"])
-    st.dataframe(submission_modules, use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2442,6 +2577,7 @@ def page_export():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    hydrate_saved_artifacts()
     page = render_sidebar()
 
     if   "Home"            in page:  page_home()

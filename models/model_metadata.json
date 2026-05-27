@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "project": "Ethiopian Household Wealth Prediction",
+    "course": "InSy3056 Data Science Application",
+    "institution": "Debre Berhan University",
+    "created_date": "2026-05-26",
+    "description": "Multi-class ordinal classification model predicting wealth quintiles (1=poorest to 5=richest) for Ethiopian households using ESS/LSMS survey data (5 waves: 2011-2021)"
+  },
+  "dataset": {
+    "name": "all_waves_merged.csv + all_waves_cleaned.csv",
+    "source": "World Bank LSMS-ISA Ethiopian Household Consumption Survey (ESS)",
+    "waves": [1, 2, 3, 4, 5],
+    "survey_years": ["2011", "2013-14", "2015-16", "2018-19", "2021"],
+    "num_households": 18500,
+    "num_features": 32,
+    "target_variable": "cons_quint",
+    "target_classes": [1, 2, 3, 4, 5],
+    "target_labels": ["Q1 (poorest)", "Q2", "Q3", "Q4", "Q5 (richest)"],
+    "class_distribution": "Balanced by design (~20% each)"
+  },
+  "training": {
+    "train_size": "0.70 (70%)",
+    "validation_size": "0.15 (15%)",
+    "test_size": "0.15 (15%)",
+    "stratified": true,
+    "random_state": 42,
+    "preprocessing": {
+      "missing_value_handling": "region × wave group median imputation",
+      "scaling": "StandardScaler (z-score normalization)",
+      "encoding": "OneHotEncoding for categorical features",
+      "outlier_handling": "IQR × 3.0 capping (conservative for survey data)"
+    }
+  },
+  "best_model": {
+    "name": "Random Forest",
+    "algorithm": "RandomForestClassifier",
+    "hyperparameters": "See notebook 04 GridSearchCV results for final tuned hyperparameters"
+  },
+  "performance_metrics": {
+    "test_accuracy": 0.4081,
+    "test_f1_weighted": 0.3992,
+    "test_f1_macro": 0.3714,
+    "test_precision_weighted": "See notebook 06 metrics output",
+    "test_recall_weighted": "See notebook 06 metrics output",
+    "cross_validation": {
+      "cv_strategy": "Stratified 5-fold cross-validation",
+      "cv_f1_mean": 0.3839,
+      "cv_f1_std": 0.0057
+    },
+    "baseline_performance": {
+      "majority_class_accuracy": "~0.20 (always predict most frequent class)",
+      "stratified_random_accuracy": "~0.20 (predict each class with true probability)"
+    }
+  },
+  "feature_importance": {
+    "method": "Tree-based feature importance + SHAP",
+    "top_features": [
+      "housing_quality_index",
+      "asset_wealth_index",
+      "electricity_access",
+      "region_ADDIS_ABABA",
+      "labour_intensity",
+      "vulnerability_index",
+      "head_education_years",
+      "head_age",
+      "household_size"
+    ],
+    "num_features_used": 32,
+    "categorical_features": ["region", "settlement"],
+    "numeric_features": 30
+  },
+  "interpretability": {
+    "shap_analysis": true,
+    "shap_plot": "reports/shap_global_importance.png",
+    "precision_recall_curves": "reports/pr_curves.png",
+    "error_analysis": "reports/error_analysis_confusion.png"
+  },
+  "regional_models": {
+    "trained": true,
+    "regions": ["ADDIS ABABA", "AMHARA", "OROMIA", "SNNPR", "TIGRAY", "BENISH", "DIRE DAWA", "GAMBELA", "HARAR", "SOMALI", "AFAR"],
+    "ranking_file": "reports/regional_wealth_ranking.csv"
+  },
+  "technical_details": {
+    "python_version": "3.9+",
+    "scikit_learn_version": "1.8.0",
+    "xgboost_version": "1.7+",
+    "lightgbm_version": "4.0+",
+    "shap_version": "0.44+",
+    "model_format": "joblib (.pkl)",
+    "model_file": "models/best_model.pkl"
+  },
+  "limitations_and_notes": [
+    "W4 (2018-19) lacks Section 7 (enterprise/shocks) data — vulnerability_index is computed from housing proxies only",
+    "Model trained on cross-sectional data (not panel) — cannot track individual household transitions",
+    "Data from 2011-2021 — may not reflect 2026 conditions (economic changes, inflation, etc.)",
+    "Target (cons_quint) is ordinal but model treats as unordered multi-class — consider ordinal regression for improvement",
+    "Model performance on small regions (Gambela, Harar) limited by sample size"
+  ],
+  "deployment": {
+    "app": "app/app.py",
+    "features": [
+      "Interactive prediction for individual households",
+      "Regional wealth ranking visualization",
+      "Per-wave data explorer",
+      "EDA charts and temporal trends",
+      "Model interpretability via SHAP explanations"
+    ],
+    "usage": "streamlit run app/app.py"
+  },
+  "future_improvements": [
+    "Add deep learning models (TabNet, SAINT) for tabular data",
+    "Implement ordinal regression (considers class ordering Q1 < Q2 < ... < Q5)",
+    "Develop longitudinal panel models (track household transitions across waves)",
+    "Add fairness audits (check for regional/ethnic bias in predictions)",
+    "Incorporate real-time World Bank macro indicators (inflation, GDP growth)",
+    "Collect more features from survey modules 2, 4, 5, 6"
+  ]
+}

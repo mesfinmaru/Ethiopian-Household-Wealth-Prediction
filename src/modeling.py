@@ -59,7 +59,7 @@ from config import MIN_REGION_N, MODEL_DIR, RANDOM_STATE, TARGET
 
 class ModelEvaluator:
     """
-    Comprehensive evaluation toolkit for classification and regression.
+    Comprehensive evaluation toolkit for classification.
 
     Provides evaluation utilities for 5-class wealth quintile prediction.
 
@@ -244,7 +244,7 @@ class WealthPredictor:
     # ── 1. Overall training & evaluation ─────────────────────────────────────
 
     def train_evaluate(self, X_train, y_train, X_test, y_test,
-                       cv_folds: int = 5) -> pd.DataFrame:
+                       cv_folds: int = 5, progress_callback=None) -> pd.DataFrame:
         """
         Train all classifiers. Evaluate on test set + stratified CV on train.
 
@@ -259,8 +259,13 @@ class WealthPredictor:
         self.label_encoder_.fit(y_train)
         y_tr_enc = self.label_encoder_.transform(y_train)
         y_te_enc = self.label_encoder_.transform(y_test)
+        models = self._build_models()
         rows = []
-        for name, model in self._build_models().items():
+        total_models = max(len(models), 1)
+        for index, (name, model) in enumerate(models.items(), start=1):
+            if progress_callback is not None:
+                start_pct = max(1, int(((index - 1) / total_models) * 100))
+                progress_callback(start_pct, f"Training {name}…")
             model.fit(X_train, y_tr_enc)
             y_pred_enc = model.predict(X_test)
             # decode predictions back to original label space for reporting
@@ -286,6 +291,9 @@ class WealthPredictor:
                 "cv_f1_mean":  round(cv_scores.mean(), 4),
                 "cv_f1_std":   round(cv_scores.std(),  4),
             })
+            if progress_callback is not None:
+                end_pct = max(1, int((index / total_models) * 100))
+                progress_callback(end_pct, f"Finished {name}")
 
         self.results_ = (pd.DataFrame(rows)
                          .sort_values("weighted_f1", ascending=False)
@@ -367,7 +375,7 @@ class WealthPredictor:
     # ── 3. Per-region models ──────────────────────────────────────────────────
 
     def train_per_region(self, df: pd.DataFrame, feature_cols: list,
-                         test_size: float = 0.20) -> pd.DataFrame:
+                         test_size: float = 0.20, progress_callback=None) -> pd.DataFrame:
         """
         Train one model per region predicting cons_quint.
         Uses LightGBM if available, else Random Forest.
@@ -376,7 +384,12 @@ class WealthPredictor:
         Minimum MIN_REGION_N households required per region.
         """
         rows = []
-        for region in sorted(df["region"].astype(str).unique()):
+        regions = sorted(df["region"].astype(str).unique())
+        total_regions = max(len(regions), 1)
+        for index, region in enumerate(regions, start=1):
+            if progress_callback is not None:
+                start_pct = max(1, int(((index - 1) / total_regions) * 100))
+                progress_callback(start_pct, f"Training region model: {region}…")
             sub = df[df["region"].astype(str) == region].copy()
             if len(sub) < MIN_REGION_N:
                 continue
@@ -415,6 +428,9 @@ class WealthPredictor:
                 "weighted_f1":         round(w_f1, 4),
                 "mean_pred_quintile":  round(mpq,  3),
             })
+            if progress_callback is not None:
+                end_pct = max(1, int((index / total_regions) * 100))
+                progress_callback(end_pct, f"Finished region model: {region}")
 
         return (pd.DataFrame(rows)
                 .sort_values("mean_pred_quintile", ascending=False)
@@ -539,5 +555,7 @@ class WealthPredictor:
         if best.exists():
             self.best_model_ = joblib.load(best)
         for pkl in sorted(out.glob("model_*.pkl")):
+            if pkl.name == "model_results.pkl":
+                continue
             region = pkl.stem.replace("model_","").replace("_"," ")
             self.region_models_[region] = {"model": joblib.load(pkl)}

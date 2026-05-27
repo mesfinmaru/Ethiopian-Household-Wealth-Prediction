@@ -2,13 +2,11 @@
 config.py
 ═══════════════════════════════════════════════════════════════════════════════
 Ethiopian Household Wealth Prediction — Project Configuration
-InSy3056 Data Science Application, Debre Berhan University
 
 All constants, directory paths, and survey column mappings are defined here.
 All other modules import from config — do not hardcode paths or column names.
 
-CRISP-DM Phase 1 (Business Understanding) defines the project scope
-and target variable. All constants here reflect that design.
+Defines the project scope and target variable. All constants here reflect that design.
 
 Wave section layout (verified from actual ESS files):
   W1/W2/W3 : sect7=enterprise | sect8=shocks    | sect9=housing+assets
@@ -19,7 +17,7 @@ W2-specific column truncations (SPSS stores max 8-char variable names):
   hh_s9q02_a → hh_s9q02  (rooms)
   hh_s3q21_a → hh_s3q21  (weeks worked)
   househ_a   → household_id (W2 primary ID)
-  househol   → household_id_w1 (W1 panel link)
+  household  → household_id_w1 (W1 panel link)
 
 TARGET: cons_quint (1=poorest → 5=wealthiest)
 LEAKAGE RULE: Never use *_cons_ann or *_cons_aeq columns as features —
