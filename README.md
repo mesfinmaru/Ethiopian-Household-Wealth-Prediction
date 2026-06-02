@@ -1,4 +1,4 @@
-# Ethiopian Household Wealth Prediction 
+## Ethiopian Household Wealth Prediction 
 
 Streamlit application and machine learning pipeline for predicting Ethiopian household wealth quintiles from five waves of World Bank LSMS-ISA / ESS survey data.
 
@@ -147,7 +147,7 @@ If the combined dataset is missing, open the Home page and click **Build Dataset
 .venv\Scripts\python.exe -m unittest discover -s test -p "test_*.py" -v
 ```
 
-## Typical Workflow
+## Typical Workflows
 
 1. Load or build the combined dataset.
 2. Inspect missingness and coverage in the Data Explorer.
